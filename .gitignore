@@ -1,0 +1,49 @@
+# virtual envs
+.env
+venv/
+.venv/
+env/
+.env_folder/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# build / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# user uploaded media / collected static files
+media/
+staticfiles/
+
+# test / coverage artifacts
+htmlcov/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*,cover
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Docker
+docker-compose.override.yml
+.docker/

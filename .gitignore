@@ -26,6 +26,7 @@ db.sqlite3-journal
 # user uploaded media / collected static files
 media/
 staticfiles/
+polls
 
 # test / coverage artifacts
 htmlcov/

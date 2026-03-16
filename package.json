@@ -1,0 +1,27 @@
+{
+  "name": "studybuddy",
+  "version": "1.0.0",
+  "description": "Aplicația Study Buddy are scopul de a ajuta studenții să își construiască un program zilnic care să gestioneze eficient timpul pentru diversele activități din viața lor. Ne propunem să implementăm un model care va genera un orar adaptat nevoilor utilizatorilor. Acesta va gestiona intervalele de activitate astfel încât să prevină epuizarea (burnout-ul) și procrastinarea. Totodată, aplicația le va oferi utilizatorilor motivație prin diverse metode, cum ar fi menținerea unui streak(serie de zile consecutive) pentru respectarea programului, dar și prin mesaje motivaționale.",
+  "main": "vite.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev" : "build",
+    "build": "vite build"
+
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexremus26/StudyBuddy.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/alexremus26/StudyBuddy/issues"
+  },
+  "homepage": "https://github.com/alexremus26/StudyBuddy#readme",
+  "devDependencies": {
+    "vite": "^8.0.0"
+  }
+}

@@ -11,6 +11,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1 
  
+RUN python3 -m venv .venv
+RUN source .venv/bin/activate
+
 # Upgrade pip and install dependencies
 RUN pip install --upgrade pip 
  

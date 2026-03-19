@@ -10,8 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM node:18-slim AS node-builder
 
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package*.json ./
 RUN npm install
+COPY . .
+RUN npm run build
 
 FROM python:3.13-slim
  
@@ -24,14 +26,12 @@ WORKDIR /app
 COPY --from=python-builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
 COPY --from=python-builder /usr/local/bin/ /usr/local/bin/
 
-COPY --from=node-builder --chown=appuser:appuser /app/node_modules ./node_modules
+COPY --from=node-builder --chown=appuser:appuser /app/static ./static
 
 COPY --chown=appuser:appuser . .
  
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 
- 
 USER appuser
- 
 EXPOSE 8000 
  
 CMD sh -c "python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 3 --no-control-socket core.wsgi:application"

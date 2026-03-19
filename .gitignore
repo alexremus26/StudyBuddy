@@ -10,6 +10,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+node_modules/
 
 # build / packaging
 build/
@@ -47,4 +48,3 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
-.docker/

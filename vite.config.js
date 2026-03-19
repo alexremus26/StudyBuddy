@@ -1,7 +1,5 @@
 import { defineConfig } from 'vite';
 import path from 'path';
-import 'vite/modulepreload-polyfill';
-
 
 export default defineConfig({
   base: '/static/', 

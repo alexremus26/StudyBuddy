@@ -29,7 +29,9 @@ services:
         condition: service_healthy
 
   vite:
-    image: node:18-slim
+    build:
+      context: .
+      target: vite-dev
     container_name: vite-app
     working_dir: /app
     user: "${UID:-1000}:${GID:-1000}"

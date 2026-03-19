@@ -16,12 +16,12 @@ services:
   web:
     build: .
     container_name: django-app
-    # Using root here solves the WSL 'Permission Denied' for staticfiles
-    user: root 
+    user: "${UID:-1000}:${GID:-1000}" # match local host's user ID and group ID
     ports:
       - "8000:8000"
     volumes:
       - .:/app
+      - /app/node_modules
     env_file:
       - .env
     depends_on:

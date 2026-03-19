@@ -1,17 +1,16 @@
-{% load static %}
 {% load django_vite %}
-
 <html>
-  <head>
-    {% vite_hmr_client %}
-    {% vite_asset '<path assets>' %}
 
-    <title>Getting Started with Django and Vite</title>
-  </head>
-  <body>
-    <div id="root"></div> 
-    <div> Test Scris Ana are mere</div>
-    
-    <script src="{% static 'js/index-bundle.js' %}"></script>
-  </body>
+<head>
+  <title>Getting Started with Django and Vite</title>
+  {% vite_hmr_client %}
+  {% vite_asset 'assets/styles/style.css' %}
+</head>
+
+<body class="bg-emerald-700 my-4">
+  <div id="root"></div>
+  <p class="text-center text-white">(and Tailwind)</p>
+  {% vite_asset 'assets/javascript/hello.jsx' %}
+</body>
+
 </html>

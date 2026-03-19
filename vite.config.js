@@ -1,7 +1,13 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
+  ],
   base: '/static/', 
 
   server: {
@@ -14,19 +20,17 @@ export default defineConfig({
 
   build: {
     outDir: path.resolve(__dirname, './static'),
-    
     emptyOutDir: false, 
-
     manifest: "manifest.json",
 
     rollupOptions: {
       input: {
-        'index': path.resolve(__dirname, './assets/index.js'),
+        'index': path.resolve(__dirname, './assets/javascript/hello.jsx'),
+        'style': path.resolve(__dirname, './assets/styles/style.css'),
       },
       output: {
         entryFileNames: `js/[name]-bundle.js`,
-        chunkFileNames: `js/[name]-[hash].js`,
-        assetFileNames: `assets/[name]-[hash][extname]`,
+        assetFileNames: `css/[name].css`,
       },
     },
   },

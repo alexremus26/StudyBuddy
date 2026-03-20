@@ -28,7 +28,8 @@ frontend/node_modules/
 
 # user uploaded media / collected static files
 media/
-backend/static/
+backend/static/*
+!backend/static/.gitkeep
 backend/staticfiles/
 polls
 

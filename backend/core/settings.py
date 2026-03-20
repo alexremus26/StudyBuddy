@@ -140,8 +140,11 @@ STATICFILES_DIRS = [
 ]
 
 DJANGO_VITE = {
-  "default": {
-    "dev_mode": True
-  }
+    "default": {
+        "dev_mode": DEBUG,
+        "dev_server_host": "localhost",
+        "dev_server_port": 5173,
+        "dev_server_protocol": "http",
+        "manifest_path": BASE_DIR / "static" / "manifest.json",
+    }
 }
-

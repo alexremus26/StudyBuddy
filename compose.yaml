@@ -14,14 +14,13 @@ services:
       retries: 5
 
   web:
-    build: .
+    build: ./backend
     container_name: django-app
     user: "${UID:-1000}:${GID:-1000}" # match local host's user ID and group ID
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
-      - /app/node_modules
+      - ./backend:/app
     env_file:
       - .env
     depends_on:
@@ -30,7 +29,7 @@ services:
 
   vite:
     build:
-      context: .
+      context: ./frontend
       target: vite-dev
     container_name: vite-app
     working_dir: /app
@@ -38,8 +37,9 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - .:/app
+      - ./frontend:/app
       - /app/node_modules
+      - ./backend:/backend
     command: sh -c "npm install && npm run dev"
     depends_on:
       - web

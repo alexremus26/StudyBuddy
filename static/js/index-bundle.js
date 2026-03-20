@@ -1,1 +1,0 @@
-var e=((e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports))((()=>{function e(){let e=document.createElement(`div`);return e.innerHTML=`Hello Vite`,e}document.body.appendChild(e())}));export default e();

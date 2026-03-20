@@ -13,13 +13,16 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    strictPort: true,
+    cors: true,
+    origin: 'http://localhost:5173',
     watch: {
       usePolling: true,
     }
   },
 
   build: {
-    outDir: path.resolve(__dirname, './static'),
+    outDir: path.resolve(__dirname, '../backend/static'),
     emptyOutDir: false, 
     manifest: "manifest.json",
 

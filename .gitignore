@@ -10,7 +10,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-node_modules/
 
 # build / packaging
 build/
@@ -24,9 +23,13 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# node dependencies
+frontend/node_modules/
+
 # user uploaded media / collected static files
 media/
-staticfiles/
+backend/static/
+backend/staticfiles/
 polls
 
 # test / coverage artifacts

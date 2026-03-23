@@ -22,6 +22,7 @@ from app import views
 
 urlpatterns = [
     path('', include('app.urls')),
+    path('api/schedule/', include('schedule.urls')),
     path('api/register/', views.user_register, name='user-register'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('api/login/', authViews.obtain_auth_token, name='api_login'),

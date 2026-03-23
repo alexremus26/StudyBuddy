@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_vite',
     'app',
+    'schedule',
     'rest_framework',
     'rest_framework.authtoken',
 ]

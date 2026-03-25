@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     'schedule',
     'rest_framework',
     'rest_framework.authtoken',
+    'drf_spectacular',
+
 ]
 
 MIDDLEWARE = [
@@ -149,11 +151,18 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     "PAGE_SIZE": 10,
     "DEFAULT_AUTHENTICATION_CLASSES": [
     "rest_framework.authentication.TokenAuthentication",
     "rest_framework.authentication.SessionAuthentication"
     ],
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "StudyBuddy API",
+    "DESCRIPTION": "OpenAPI schema for StudyBuddy backend endpoints.",
+    "VERSION": "1.0.0",
 }
 
 DJANGO_VITE = {

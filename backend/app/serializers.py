@@ -2,6 +2,7 @@ from django.contrib.auth.models import Group, User
 from django.utils import timezone
 from .models import Task, UserProfile
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 class GroupSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
@@ -28,6 +29,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = ['id', 'username', 'avatar', 'streak', 'upcoming_tasks']
 
+    @extend_schema_field(TaskPreviewSerializer(many=True))
     def get_upcoming_tasks(self, obj):
         today = timezone.localdate()
         qs = (

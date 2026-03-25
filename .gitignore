@@ -52,3 +52,10 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# OpenAPI generated artifacts
+backend/openapi-schema.yaml
+frontend/assets/javascript/api/schema.d.ts
+
+# npm debug logs
+npm-debug.log*

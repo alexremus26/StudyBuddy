@@ -28,7 +28,7 @@ export default defineConfig({
 
     rollupOptions: {
       input: {
-        'index': path.resolve(__dirname, './assets/javascript/hello.jsx'),
+        'index': path.resolve(__dirname, './assets/javascript/app.jsx'),
         'style': path.resolve(__dirname, './assets/styles/style.css'),
       },
       output: {

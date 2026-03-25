@@ -1,6 +1,7 @@
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from drf_spectacular.utils import OpenApiTypes, extend_schema
 
 from app.models import Task, TaskBlock
 from schedule.serializers import (
@@ -14,6 +15,17 @@ from schedule.serializers import (
 )
 
 
+@extend_schema(
+	methods=["GET"],
+	operation_id="tasks_list",
+	responses={200: TaskSerializer(many=True)},
+)
+@extend_schema(
+	methods=["POST"],
+	operation_id="tasks_create",
+	request=TaskCreateSerializer,
+	responses={201: TaskCreateSerializer, 400: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "POST"])
 @permission_classes([permissions.IsAuthenticated])
 def task_list_create(request):
@@ -29,6 +41,22 @@ def task_list_create(request):
 	return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+	methods=["GET"],
+	operation_id="tasks_retrieve",
+	responses={200: TaskSerializer, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+	methods=["PATCH"],
+	operation_id="tasks_update",
+	request=TaskEditSerializer,
+	responses={200: TaskEditSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+	methods=["DELETE"],
+	operation_id="tasks_delete",
+	responses={204: None, 404: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([permissions.IsAuthenticated])
 def task_detail(request, pk):
@@ -54,6 +82,17 @@ def task_detail(request, pk):
 	return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(
+	methods=["GET"],
+	operation_id="task_blocks_list",
+	responses={200: TaskBlockSerializer(many=True)},
+)
+@extend_schema(
+	methods=["POST"],
+	operation_id="task_blocks_create",
+	request=TaskBlockCreateSerializer,
+	responses={201: TaskBlockCreateSerializer, 400: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "POST"])
 @permission_classes([permissions.IsAuthenticated])
 def task_block_list_create(request):
@@ -73,6 +112,22 @@ def task_block_list_create(request):
 	return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+	methods=["GET"],
+	operation_id="task_blocks_retrieve",
+	responses={200: TaskBlockSerializer, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+	methods=["PATCH"],
+	operation_id="task_blocks_update",
+	request=TaskBlockEditSerializer,
+	responses={200: TaskBlockEditSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+	methods=["DELETE"],
+	operation_id="task_blocks_delete",
+	responses={204: None, 404: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([permissions.IsAuthenticated])
 def task_block_detail(request, pk):
@@ -98,6 +153,12 @@ def task_block_detail(request, pk):
 	return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(
+	methods=["POST"],
+	operation_id="task_blocks_bulk_create",
+	request=TaskBlockBulkCreateSerializer,
+	responses={201: TaskBlockSerializer(many=True), 400: OpenApiTypes.OBJECT},
+)
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def task_block_bulk_create(request):

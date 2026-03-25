@@ -1,13 +1,29 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.contrib.auth.models import Group, User
 from rest_framework import status, permissions
 from rest_framework.decorators import permission_classes
 from rest_framework.authtoken.models import Token
+from drf_spectacular.utils import OpenApiTypes, extend_schema
 from .serializers import UserSerializer, UserMeSerializer, UserProfileSerializer, UserRegisterSerializer
 from .models import UserProfile
+from django.contrib import messages
+from django.contrib.auth import login
+from django.shortcuts import redirect
 
+
+@extend_schema(
+    methods=["GET"],
+    operation_id="users_list",
+    responses={200: UserSerializer(many=True)},
+)
+@extend_schema(
+    methods=["POST"],
+    operation_id="users_create",
+    request=UserSerializer,
+    responses={201: UserSerializer, 400: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "POST"])
 @permission_classes([permissions.IsAuthenticatedOrReadOnly])
 def user_list(request, format=None):
@@ -23,6 +39,24 @@ def user_list(request, format=None):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+
+@extend_schema(
+    methods=["GET"],
+    operation_id="users_retrieve",
+    responses={200: UserSerializer, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+    methods=["PUT"],
+    operation_id="users_update",
+    request=UserSerializer,
+    responses={200: UserSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+    methods=["DELETE"],
+    operation_id="users_delete",
+    responses={204: None, 404: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([permissions.IsAuthenticatedOrReadOnly])
 def user_detail(request, pk, format=None):
@@ -46,6 +80,13 @@ def user_detail(request, pk, format=None):
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
+
+
+@extend_schema(
+    methods=["GET"],
+    operation_id="users_me_retrieve",
+    responses={200: UserMeSerializer},
+)
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def me_overview(request):
@@ -53,6 +94,17 @@ def me_overview(request):
     serializer = UserMeSerializer(profile, context={"request": request})
     return Response(serializer.data)
 
+@extend_schema(
+    methods=["GET"],
+    operation_id="users_me_profile_retrieve",
+    responses={200: UserProfileSerializer},
+)
+@extend_schema(
+    methods=["PUT"],
+    operation_id="users_me_profile_update",
+    request=UserProfileSerializer,
+    responses={200: UserProfileSerializer, 400: OpenApiTypes.OBJECT},
+)
 @api_view(["GET", "PUT"])
 @permission_classes([permissions.IsAuthenticated])
 def me_profile(request):
@@ -70,6 +122,14 @@ def me_profile(request):
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+
+@extend_schema(
+    methods=["POST"],
+    operation_id="users_register",
+    request=UserRegisterSerializer,
+    responses={201: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def user_register(request):
@@ -89,4 +149,24 @@ def user_register(request):
             status=status.HTTP_201_CREATED,
         )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
+
+
+def overview(request):
+    return render(request, "index.html")
+
+
+
+def register_page(request):
+    if request.method == "GET":
+        return redirect("overview")
+
+    serializer = UserRegisterSerializer(data=request.POST)
+    if serializer.is_valid():
+        user = serializer.save()
+        Token.objects.get_or_create(user=user)  # optional, keeps API token flow
+        messages.success(request, "Account created successfully.")
+        return redirect("overview")
+
+    messages.error(request, "Registration failed. Please try again from the Auth tab.")
+    return redirect("overview")

@@ -50,10 +50,11 @@ New packages:
  - `docker compose exec web pip show package-name`
  
 API contract (serializers/views/routes):
-- Regenerate schema:
-	- `docker compose exec web python manage.py spectacular --file /app/openapi-schema.yaml --validate`
-- Regenerate frontend API types:
-	- `docker compose exec vite npm run gen:api`
+- If backend endpoints change (it helps with typechecking of the frontend and ReDoc documentation)
+    - Regenerate schema:
+        - `docker compose exec web python manage.py spectacular --file /app/openapi-schema.yaml --validate`
+    - Regenerate frontend API types:
+        - `docker compose exec vite npm run gen:api`
 
 ## Useful Commands
 

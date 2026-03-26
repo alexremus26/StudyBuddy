@@ -1,7 +1,7 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth.models import User
-from app.models import UserProfile
+from app.models import UserProfile, Task
 
 # Create your tests here.
 
@@ -198,3 +198,78 @@ class AuthFlowTests(APITestCase):
         # Username stored without padding
         user = User.objects.get(username="trimmeduser")
         self.assertEqual(user.username, "trimmeduser")
+
+
+class TaskValidationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="taskuser",
+            email="taskuser@example.com",
+            password="TestPass123!",
+        )
+
+    def test_create_task_with_past_due_date_fails(self):
+        """Reject task creation with due_date in the past."""
+        self.client.force_authenticate(user=self.user)
+        from datetime import datetime, timedelta
+
+        past_date = (datetime.now() - timedelta(days=1)).date().isoformat()
+
+        payload = {
+            "title": "Past Task",
+            "description": "This task is due in the past",
+            "due_date": past_date,
+        }
+        response = self.client.post("/api/schedule/tasks/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("due_date", response.data)
+
+    def test_create_task_with_today_due_date_succeeds(self):
+        """Allow task creation with due_date as today."""
+        self.client.force_authenticate(user=self.user)
+        from datetime import datetime
+
+        today = datetime.now().date().isoformat()
+
+        payload = {
+            "title": "Today Task",
+            "description": "This task is due today",
+            "due_date": today,
+        }
+        response = self.client.post("/api/schedule/tasks/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_task_with_future_due_date_succeeds(self):
+        """Allow task creation with due_date in the future."""
+        self.client.force_authenticate(user=self.user)
+        from datetime import datetime, timedelta
+
+        future_date = (datetime.now() + timedelta(days=7)).date().isoformat()
+
+        payload = {
+            "title": "Future Task",
+            "description": "This task is due in a week",
+            "due_date": future_date,
+        }
+        response = self.client.post("/api/schedule/tasks/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_edit_task_with_past_due_date_fails(self):
+        """Reject task edit with past due_date."""
+        self.client.force_authenticate(user=self.user)
+        from datetime import datetime, timedelta
+
+        task = Task.objects.create(
+            user=self.user,
+            title="Original Task",
+            estimated_duration_minutes=60,
+        )
+
+        past_date = (datetime.now() - timedelta(days=1)).date().isoformat()
+
+        payload = {"due_date": past_date}
+        response = self.client.patch(
+            f"/api/schedule/tasks/{task.id}/", payload, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("due_date", response.data)

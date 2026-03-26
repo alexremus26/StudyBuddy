@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Sidebar } from './components/Sidebar';
 import { IntroSection } from './components/AuthSection';
+import { Schedule } from './components/Schedule';
 import {
   getMe,
   loginUser,
@@ -15,6 +16,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [showAuthPanel, setShowAuthPanel] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  const [currentTab, setCurrentTab] = useState('home');
 
   const handleAuthSubmit = async ({ username, email, password }) => {
     const trimmedUsername = username?.trim();
@@ -85,41 +87,88 @@ export default function App() {
   return (
     <div className="size-full flex min-h-screen bg-background text-foreground">
       <Sidebar
-          isLoggedIn={isLoggedIn}
-          profile={profile}
-          onLoginClick={() => {
-            setAuthMode('login');
-            setShowAuthPanel(true);
-          }}
-          onRegisterClick={() => {
-            setAuthMode('register');
-            setShowAuthPanel(true);
-          }}
-        />
+        isLoggedIn={isLoggedIn}
+        profile={profile}
+        currentTab={currentTab}
+        onTabChange={setCurrentTab}
+        onLoginClick={() => {
+          setAuthMode('login');
+          setShowAuthPanel(true);
+        }}
+        onRegisterClick={() => {
+          setAuthMode('register');
+          setShowAuthPanel(true);
+        }}
+      />
       <main className="flex-1 p-4 md:p-8">
         {isLoggedIn ? (
-          <div className="rounded-xl border bg-card p-8 shadow-sm">
-            <h2>Main App Content - You're logged in!</h2>
-            <p className="text-muted-foreground mt-2">
-              Insert student dashboard.
-            </p>
-            {profile ? (
-              <p className="mt-4 text-sm text-muted-foreground">
-                Logged in as: <span className="font-medium text-foreground">{profile.user?.username || 'User'}</span>
-              </p>
-            ) : null}
-            <button
-              onClick={() => {
-                setIsLoggedIn(false);
-                setAuthToken(null);
-                setProfile(null);
-                setShowAuthPanel(false);
-              }}
-              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90"
-            >
-              Logout
-            </button>
-          </div>
+          <>
+            {/* Home Tab */}
+            {currentTab === 'home' && (
+              <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
+                <h2 className="text-3xl font-bold">Welcome!</h2>
+                <p className="text-muted-foreground mt-2">
+                  Start managing your schedule and stay on track with your goals.
+                </p>
+                {profile ? (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Logged in as: <span className="font-medium text-foreground">{profile.username}</span>
+                  </p>
+                ) : null}
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border bg-background p-6">
+                    <h3 className="font-semibold text-lg mb-2">Schedule</h3>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Create and manage your daily tasks. Add, edit, and delete tasks to keep track of what you need to do.
+                    </p>
+                    <button
+                      onClick={() => setCurrentTab('schedule')}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
+                    >
+                      Go to Schedule
+                    </button>
+                  </div>
+                  <div className="rounded-lg border bg-background p-6">
+                    <h3 className="font-semibold text-lg mb-2">Focus Sessions</h3>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Coming soon! Track your focus sessions and schedule task blocks to maintain productivity.
+                    </p>
+                    <button
+                      disabled
+                      className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg opacity-50 cursor-not-allowed text-sm"
+                    >
+                      Coming Soon
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsLoggedIn(false);
+                    setAuthToken(null);
+                    setProfile(null);
+                    setShowAuthPanel(false);
+                    setCurrentTab('home');
+                  }}
+                  className="mt-6 px-4 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 text-sm"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+
+            {/* Schedule Tab */}
+            {currentTab === 'schedule' && <Schedule />}
+
+            {/* Focus Sessions Tab */}
+            {currentTab === 'focus' && (
+              <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
+                <h2 className="text-3xl font-bold">Focus Sessions</h2>
+                <p className="text-muted-foreground mt-2">
+                  Coming soon! This feature will help you schedule focused work sessions.
+                </p>
+              </div>
+            )}
+          </>
         ) : showAuthPanel ? (
           <IntroSection mode={authMode} onSubmit={handleAuthSubmit} />
         ) : null}

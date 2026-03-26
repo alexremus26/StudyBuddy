@@ -62,6 +62,19 @@ def _has_overlap(user, start_time, end_time, exclude_id=None):
     return qs.exists()
 
 
+def _validate_due_date(due_date):
+    """Ensure due_date is not in the past."""
+    if due_date is None:
+        return
+    today = timezone.localdate()
+    if hasattr(due_date, 'date'):
+        due_date = due_date.date()
+    if due_date < today:
+        raise serializers.ValidationError(
+            {"due_date": "Due date cannot be in the past."}
+        )
+
+
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
@@ -87,6 +100,10 @@ class TaskCreateSerializer(serializers.ModelSerializer):
             "due_date",
         ]
 
+    def validate_due_date(self, value):
+        _validate_due_date(value)
+        return value
+
 
 class TaskEditSerializer(serializers.ModelSerializer):
     class Meta:
@@ -98,6 +115,10 @@ class TaskEditSerializer(serializers.ModelSerializer):
             "is_completed",
             "due_date",
         ]
+
+    def validate_due_date(self, value):
+        _validate_due_date(value)
+        return value
 
 
 class TaskBlockSerializer(serializers.ModelSerializer):

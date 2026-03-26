@@ -1,5 +1,11 @@
-export function Sidebar({ isLoggedIn = false, profile = null, onLoginClick = () => {}, onRegisterClick = () => {} }) {
-  const initial = profile?.user?.username ? profile.user.username.charAt(0).toUpperCase() : '·';
+export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home', onTabChange = () => {}, onLoginClick = () => {}, onRegisterClick = () => {} }) {
+  const initial = profile?.username ? profile.username.charAt(0).toUpperCase() : '·';
+
+  const tabs = [
+    { id: 'home', label: 'Home' },
+    { id: 'schedule', label: 'Schedule' },
+    { id: 'focus', label: 'Focus Sessions' },
+  ];
 
   return (
     <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar p-6 md:flex md:flex-col">
@@ -9,24 +15,19 @@ export function Sidebar({ isLoggedIn = false, profile = null, onLoginClick = () 
       </div>
 
       <nav className="mt-8 space-y-2">
-        <a
-          href="#"
-          className="block rounded-lg bg-sidebar-accent px-3 py-2 text-sm font-medium text-sidebar-accent-foreground"
-        >
-          Home
-        </a>
-        <a
-          href="#"
-          className="block rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
-        >
-          Schedule
-        </a>
-        <a
-          href="#"
-          className="block rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
-        >
-          Focus Sessions
-        </a>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
+            className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              currentTab === tab.id
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                : 'text-muted-foreground hover:bg-sidebar-accent'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </nav>
 
       <div className="mt-auto pt-8">
@@ -38,7 +39,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, onLoginClick = () 
           <div className="flex-1">
             {isLoggedIn ? (
               <>
-                <p className="text-sm font-semibold text-sidebar-foreground">{profile?.user?.username || 'User'}</p>
+                <p className="text-sm font-semibold text-sidebar-foreground">{profile?.username}</p>
                 <p className="text-xs text-muted-foreground">Profile</p>
               </>
             ) : (

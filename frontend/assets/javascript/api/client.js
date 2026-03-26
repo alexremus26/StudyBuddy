@@ -47,18 +47,55 @@ async function postJson(url, payload) {
   return data;
 }
 
+async function patchJson(url, payload) {
+  const token = getAuthToken();
+  const response = await fetch(url, {
+    method: 'PATCH',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(data ?? 'Request failed', response);
+  }
+  return data;
+}
+
+async function deleteJson(url) {
+  const token = getAuthToken();
+  const response = await fetch(url, {
+    method: 'DELETE',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw toApiError(data ?? 'Request failed', response);
+  }
+  return true;
+}
+
 const apiClient = createClient({
   baseUrl: '',
   fetch: async (input, init = {}) => {
     const headers = new Headers(init.headers || {});
     headers.set('Accept', 'application/json');
 
-    const contentType = headers.get('Content-Type');
-    const hasEmptyContentType = contentType != null && contentType.trim() === '';
-    const isFormDataBody = typeof FormData !== 'undefined' && init.body instanceof FormData;
-
-    if (init.body != null && !isFormDataBody && (!contentType || hasEmptyContentType)) {
-      headers.set('Content-Type', 'application/json');
+    if (init.body != null) {
+      const currentContentType = headers.get('Content-Type');
+      if (!currentContentType || currentContentType.trim() === '') {
+        headers.set('Content-Type', 'application/json');
+      }
     }
 
     const token = getAuthToken();
@@ -99,11 +136,23 @@ export async function listTasks() {
 }
 
 export async function createTask(payload) {
-  const { data, error, response } = await apiClient.POST('/api/schedule/tasks/', {
-    body: payload,
+  return postJson('/api/schedule/tasks/', payload);
+}
+
+export async function getTask(taskId) {
+  const { data, error, response } = await apiClient.GET('/api/schedule/tasks/{id}/', {
+    params: { path: { id: taskId } },
   });
   if (error) {
     throw toApiError(error, response);
   }
   return data;
+}
+
+export async function updateTask(taskId, payload) {
+  return patchJson(`/api/schedule/tasks/${taskId}/`, payload);
+}
+
+export async function deleteTask(taskId) {
+  return deleteJson(`/api/schedule/tasks/${taskId}/`);
 }

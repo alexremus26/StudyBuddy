@@ -1,8 +1,12 @@
 from django.contrib.auth.models import Group, User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from .models import Task, UserProfile
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
+
+RESERVED_USERNAMES = {"admin", "root", "me", "api", "support", "system"}
 
 class GroupSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
@@ -51,20 +55,37 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'timezone', 'study_hours', 'avatar', 'streak']
 
 class UserRegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     class Meta:
         model = User
         fields = ['username', 'email', 'password']
 
     def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
+        username = value.strip()
+        if not username:
+            raise serializers.ValidationError("Username cannot be blank.")
+        if username.lower() in RESERVED_USERNAMES:
+            raise serializers.ValidationError("This username is reserved.")
+        if User.objects.filter(username__iexact=username).exists():
             raise serializers.ValidationError("Username already in use.")
-        return value
+        return username
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        email = value.strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError("Email already in use.")
+        return email
+
+    def validate_password(self, value):
+        user = User(
+            username=self.initial_data.get("username", "").strip(),
+            email=self.initial_data.get("email", "").strip().lower(),
+        )
+        try:
+            validate_password(value, user=user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(list(exc.messages))
         return value
 
     def create(self, validated_data):

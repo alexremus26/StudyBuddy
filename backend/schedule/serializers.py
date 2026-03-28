@@ -1,6 +1,78 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from app.models import Task, TaskBlock
+
+MAX_DURATION_MINUTES : int = 24 * 60
+MAX_BULK_TASKS : int = 100
+
+
+def _validate_aware(dt, field_name):
+    """Ensure datetime is timezone-aware."""
+    if dt is not None:
+        if timezone.is_naive(dt) or dt.tzinfo is None:
+            raise serializers.ValidationError(
+                {field_name: f"{field_name} must be timezone-aware."}
+            )
+
+
+def _validate_time_window(start_time, end_time):
+    """Validate start_time and end_time are aware and end_time > start_time."""
+    _validate_aware(start_time, "start_time")
+    _validate_aware(end_time, "end_time")
+    if start_time and end_time and end_time <= start_time:
+        raise serializers.ValidationError(
+            {"end_time": "end_time must be after start_time."}
+        )
+
+
+def _validate_duration(value):
+    """Ensure duration_minutes is non-negative and within reasonable bounds."""
+    if value is None:
+        return
+    if value < 0:
+        raise serializers.ValidationError(
+            {"actual_duration_minutes": "Must be greater than or equal to 0."}
+        )
+    if value > MAX_DURATION_MINUTES:
+        raise serializers.ValidationError(
+            {"actual_duration_minutes": f"Must be <= {MAX_DURATION_MINUTES}."}
+        )
+
+
+def _ensure_task_belongs_to_user(task, user):
+    """Defense-in-depth: verify task ownership."""
+    if task and user and task.user_id != user.id:
+        raise serializers.ValidationError(
+            {"task_id": "Selected task does not belong to the authenticated user."}
+        )
+
+
+def _has_overlap(user, start_time, end_time, exclude_id=None):
+    """Check if a task block overlaps any existing block for the same user."""
+    if not (user and start_time and end_time):
+        return False
+    qs = TaskBlock.objects.filter(
+        user=user,
+        start_time__lt=end_time,
+        end_time__gt=start_time,
+    )
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+    return qs.exists()
+
+
+def _validate_due_date(due_date):
+    """Ensure due_date is not in the past."""
+    if due_date is None:
+        return
+    today = timezone.localdate()
+    if hasattr(due_date, 'date'):
+        due_date = due_date.date()
+    if due_date < today:
+        raise serializers.ValidationError(
+            {"due_date": "Due date cannot be in the past."}
+        )
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -28,6 +100,10 @@ class TaskCreateSerializer(serializers.ModelSerializer):
             "due_date",
         ]
 
+    def validate_due_date(self, value):
+        _validate_due_date(value)
+        return value
+
 
 class TaskEditSerializer(serializers.ModelSerializer):
     class Meta:
@@ -39,6 +115,10 @@ class TaskEditSerializer(serializers.ModelSerializer):
             "is_completed",
             "due_date",
         ]
+
+    def validate_due_date(self, value):
+        _validate_due_date(value)
+        return value
 
 
 class TaskBlockSerializer(serializers.ModelSerializer):
@@ -69,11 +149,23 @@ class TaskBlockSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         start_time = attrs.get("start_time")
         end_time = attrs.get("end_time")
+        task = attrs.get("task")
+        request = self.context.get("request")
+        user = request.user if request else None
 
-        if start_time and end_time and end_time <= start_time:
+        _validate_time_window(start_time, end_time)
+
+        actual_duration = attrs.get("actual_duration_minutes")
+        _validate_duration(actual_duration)
+
+        _ensure_task_belongs_to_user(task, user)
+
+        exclude_id = self.instance.id if self.instance else None
+        if _has_overlap(user, start_time, end_time, exclude_id=exclude_id):
             raise serializers.ValidationError(
-                {"end_time": "end_time must be after start_time."}
+                {"non_field_errors": "This time slot overlaps with an existing task block."}
             )
+
         return attrs
 
 
@@ -101,11 +193,22 @@ class TaskBlockCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         start_time = attrs.get("start_time")
         end_time = attrs.get("end_time")
+        task = attrs.get("task")
+        request = self.context.get("request")
+        user = request.user if request else None
 
-        if start_time and end_time and end_time <= start_time:
+        _validate_time_window(start_time, end_time)
+
+        actual_duration = attrs.get("actual_duration_minutes")
+        _validate_duration(actual_duration)
+
+        _ensure_task_belongs_to_user(task, user)
+
+        if _has_overlap(user, start_time, end_time):
             raise serializers.ValidationError(
-                {"end_time": "end_time must be after start_time."}
+                {"non_field_errors": "This time slot overlaps with an existing task block."}
             )
+
         return attrs
 
 
@@ -133,11 +236,22 @@ class TaskBlockEditSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
         end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
+        task = attrs.get("task", getattr(self.instance, "task", None))
+        request = self.context.get("request")
+        user = request.user if request else None
 
-        if start_time and end_time and end_time <= start_time:
+        _validate_time_window(start_time, end_time)
+
+        actual_duration = attrs.get("actual_duration_minutes", getattr(self.instance, "actual_duration_minutes", None))
+        _validate_duration(actual_duration)
+
+        _ensure_task_belongs_to_user(task, user)
+
+        if _has_overlap(user, start_time, end_time, exclude_id=self.instance.id):
             raise serializers.ValidationError(
-                {"end_time": "end_time must be after start_time."}
+                {"non_field_errors": "This time slot overlaps with an existing task block."}
             )
+
         return attrs
 
 
@@ -158,11 +272,34 @@ class TaskBlockBulkCreateSerializer(serializers.Serializer):
                 user=request.user
             )
 
-    def validate(self, attrs):
-        if attrs["end_time"] <= attrs["start_time"]:
+    def validate_task_ids(self, value):
+        """Ensure no duplicates and respect max batch size."""
+        task_id_values = [t.id for t in value]
+        if len(task_id_values) != len(set(task_id_values)):
+            raise serializers.ValidationError("task_ids contains duplicate tasks.")
+        if len(value) > MAX_BULK_TASKS:
             raise serializers.ValidationError(
-                {"end_time": "end_time must be after start_time."}
+                f"Maximum {MAX_BULK_TASKS} tasks allowed per bulk request."
             )
+        return value
+
+    def validate(self, attrs):
+        start_time = attrs.get("start_time")
+        end_time = attrs.get("end_time")
+        task_ids = attrs.get("task_ids", [])
+        request = self.context.get("request")
+        user = request.user if request else None
+
+        _validate_time_window(start_time, end_time)
+
+        for task in task_ids:
+            _ensure_task_belongs_to_user(task, user)
+
+        if _has_overlap(user, start_time, end_time):
+            raise serializers.ValidationError(
+                {"non_field_errors": "This time slot overlaps with an existing task block."}
+            )
+
         return attrs
 
     def create(self, validated_data):

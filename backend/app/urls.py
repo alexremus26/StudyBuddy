@@ -7,5 +7,4 @@ urlpatterns = [
     path('me/profile/', views.me_profile, name='user-profile'),
     path('users/', views.user_list, name='user-list'),
     path('users/<int:pk>/', views.user_detail, name='user-detail'),
-    path("register/", views.register_page, name="register-page"),
 ]

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { IntroSection } from './components/AuthSection';
 import { Schedule } from './components/Schedule';
@@ -11,14 +12,93 @@ import {
   setAuthToken,
 } from './api/client';
 
-export default function App() {
+function HomeTab({ profile, onGoSchedule, onLogout }) {
+  return (
+    <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
+      <h2 className="text-3xl font-bold">Welcome!</h2>
+      <p className="text-muted-foreground mt-2">
+        Start managing your schedule and stay on track with your goals.
+      </p>
+      {profile ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Logged in as: <span className="font-medium text-foreground">{profile.username}</span>
+        </p>
+      ) : null}
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border bg-background p-6">
+          <h3 className="font-semibold text-lg mb-2">Schedule</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            Create and manage your daily tasks. Add, edit, and delete tasks to keep track of what you need to do.
+          </p>
+          <button
+            onClick={onGoSchedule}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
+          >
+            Go to Schedule
+          </button>
+        </div>
+        <div className="rounded-lg border bg-background p-6">
+          <h3 className="font-semibold text-lg mb-2">Focus Sessions</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            Coming soon! Track your focus sessions and schedule task blocks to maintain productivity.
+          </p>
+          <button
+            disabled
+            className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg opacity-50 cursor-not-allowed text-sm"
+          >
+            Coming Soon
+          </button>
+        </div>
+      </div>
+      <button
+        onClick={onLogout}
+        className="mt-6 px-4 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 text-sm"
+      >
+        Logout
+      </button>
+    </div>
+  );
+}
+
+function FocusTab() {
+  return (
+    <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
+      <h2 className="text-3xl font-bold">Focus Sessions</h2>
+      <p className="text-muted-foreground mt-2">
+        Coming soon! This feature will help you schedule focused work sessions.
+      </p>
+    </div>
+  );
+}
+
+function AppShell() {
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAuthToken()));
   const [profile, setProfile] = useState(null);
-  const [showAuthPanel, setShowAuthPanel] = useState(false);
-  const [authMode, setAuthMode] = useState('login');
-  const [currentTab, setCurrentTab] = useState('home');
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const handleAuthSubmit = async ({ username, email, password }) => {
+  const currentPath = location.pathname;
+  const currentTab = currentPath === '/schedule'
+    ? 'schedule'
+    : currentPath === '/focus'
+      ? 'focus'
+      : 'home';
+
+  const navigateToTab = (tabId) => {
+    if (tabId === 'schedule') {
+      navigate('/schedule');
+      return;
+    }
+
+    if (tabId === 'focus') {
+      navigate('/focus');
+      return;
+    }
+
+    navigate('/');
+  };
+
+  const handleAuthSubmit = async ({ username, email, password }, mode) => {
     const trimmedUsername = username?.trim();
     const trimmedPassword = password;
 
@@ -30,7 +110,7 @@ export default function App() {
     let data;
 
     try {
-      if (authMode === 'register') {
+      if (mode === 'register') {
         data = await registerUser({
           ...payload,
           email: (email?.trim() || trimmedUsername),
@@ -48,7 +128,7 @@ export default function App() {
 
     setAuthToken(data.token);
     setIsLoggedIn(true);
-    setShowAuthPanel(false);
+    navigate('/', { replace: true });
   };
 
   const fetchUserData = async () => {
@@ -84,96 +164,76 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
+  useEffect(() => {
+    if (!isLoggedIn && !['/login', '/register'].includes(currentPath)) {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    if (isLoggedIn && ['/login', '/register'].includes(currentPath)) {
+      navigate('/', { replace: true });
+    }
+  }, [currentPath, isLoggedIn, navigate]);
+
   return (
     <div className="size-full flex min-h-screen bg-background text-foreground">
       <Sidebar
         isLoggedIn={isLoggedIn}
         profile={profile}
         currentTab={currentTab}
-        onTabChange={setCurrentTab}
-        onLoginClick={() => {
-          setAuthMode('login');
-          setShowAuthPanel(true);
-        }}
-        onRegisterClick={() => {
-          setAuthMode('register');
-          setShowAuthPanel(true);
-        }}
+        onTabChange={navigateToTab}
+        onLoginClick={() => navigate('/login')}
+        onRegisterClick={() => navigate('/register')}
       />
       <main className="flex-1 p-4 md:p-8">
-        {isLoggedIn ? (
-          <>
-            {/* Home Tab */}
-            {currentTab === 'home' && (
-              <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
-                <h2 className="text-3xl font-bold">Welcome!</h2>
-                <p className="text-muted-foreground mt-2">
-                  Start managing your schedule and stay on track with your goals.
-                </p>
-                {profile ? (
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Logged in as: <span className="font-medium text-foreground">{profile.username}</span>
-                  </p>
-                ) : null}
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border bg-background p-6">
-                    <h3 className="font-semibold text-lg mb-2">Schedule</h3>
-                    <p className="text-muted-foreground text-sm mb-4">
-                      Create and manage your daily tasks. Add, edit, and delete tasks to keep track of what you need to do.
-                    </p>
-                    <button
-                      onClick={() => setCurrentTab('schedule')}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
-                    >
-                      Go to Schedule
-                    </button>
-                  </div>
-                  <div className="rounded-lg border bg-background p-6">
-                    <h3 className="font-semibold text-lg mb-2">Focus Sessions</h3>
-                    <p className="text-muted-foreground text-sm mb-4">
-                      Coming soon! Track your focus sessions and schedule task blocks to maintain productivity.
-                    </p>
-                    <button
-                      disabled
-                      className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg opacity-50 cursor-not-allowed text-sm"
-                    >
-                      Coming Soon
-                    </button>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setIsLoggedIn(false);
-                    setAuthToken(null);
-                    setProfile(null);
-                    setShowAuthPanel(false);
-                    setCurrentTab('home');
-                  }}
-                  className="mt-6 px-4 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 text-sm"
-                >
-                  Logout
-                </button>
-              </div>
-            )}
-
-            {/* Schedule Tab */}
-            {currentTab === 'schedule' && <Schedule />}
-
-            {/* Focus Sessions Tab */}
-            {currentTab === 'focus' && (
-              <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
-                <h2 className="text-3xl font-bold">Focus Sessions</h2>
-                <p className="text-muted-foreground mt-2">
-                  Coming soon! This feature will help you schedule focused work sessions.
-                </p>
-              </div>
-            )}
-          </>
-        ) : showAuthPanel ? (
-          <IntroSection mode={authMode} onSubmit={handleAuthSubmit} />
-        ) : null}
+        <Routes>
+          {isLoggedIn ? (
+            <>
+              <Route
+                path="/"
+                element={(
+                  <HomeTab
+                    profile={profile}
+                    onGoSchedule={() => navigate('/schedule')}
+                    onLogout={() => {
+                      setIsLoggedIn(false);
+                      setAuthToken(null);
+                      setProfile(null);
+                      navigate('/login', { replace: true });
+                    }}
+                  />
+                )}
+              />
+              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/focus" element={<FocusTab />} />
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="/register" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </>
+          ) : (
+            <>
+              <Route
+                path="/login"
+                element={<IntroSection mode="login" onSubmit={(values) => handleAuthSubmit(values, 'login')} />}
+              />
+              <Route
+                path="/register"
+                element={<IntroSection mode="register" onSubmit={(values) => handleAuthSubmit(values, 'register')} />}
+              />
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </>
+          )}
+        </Routes>
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter> 
   );
 }
 

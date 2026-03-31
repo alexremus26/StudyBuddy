@@ -1,7 +1,7 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth.models import User
-from app.models import UserProfile, Task
+from app.models import UserProfile, Assignment
 
 # Create your tests here.
 
@@ -259,7 +259,7 @@ class TaskValidationTests(APITestCase):
         self.client.force_authenticate(user=self.user)
         from datetime import datetime, timedelta
 
-        task = Task.objects.create(
+        task = Assignment.objects.create(
             user=self.user,
             title="Original Task",
             estimated_duration_minutes=60,

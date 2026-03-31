@@ -50,7 +50,7 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
-            name='Task',
+            name='Assignment',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('title', models.CharField(max_length=255)),
@@ -59,7 +59,20 @@ class Migration(migrations.Migration):
                 ('is_completed', models.BooleanField(default=False)),
                 ('due_date', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tasks', to=settings.AUTH_USER_MODEL)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='assignments', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='SchoolClass',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=255)),
+                ('day_of_week', models.PositiveSmallIntegerField(choices=[(0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'), (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')])),
+                ('start_time', models.TimeField()),
+                ('end_time', models.TimeField()),
+                ('location', models.CharField(blank=True, max_length=255)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='school_classes', to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -70,7 +83,7 @@ class Migration(migrations.Migration):
                 ('end_time', models.DateTimeField()),
                 ('actual_duration_minutes', models.PositiveIntegerField(blank=True, help_text='How long did it actually take?', null=True)),
                 ('completed', models.BooleanField(default=False)),
-                ('task', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='scheduled_blocks', to='app.task')),
+                ('assignment', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='scheduled_blocks', to='app.assignment')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='task_blocks', to=settings.AUTH_USER_MODEL)),
             ],
         ),

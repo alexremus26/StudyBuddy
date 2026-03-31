@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from app.models import Task, TaskBlock
+from app.models import Assignment, TaskBlock
 
 
 class ScheduleApiTests(APITestCase):
@@ -18,13 +18,13 @@ class ScheduleApiTests(APITestCase):
 			username="andrei", email="andrei@example.com", password="ciscosecpa55"
 		)
 
-		self.user_one_task = Task.objects.create(
+		self.user_one_task = Assignment.objects.create(
 			user=self.user_one,
 			title="Alex task",
 			description="Task for alex",
 			estimated_duration_minutes=45,
 		)
-		self.user_two_task = Task.objects.create(
+		self.user_two_task = Assignment.objects.create(
 			user=self.user_two,
 			title="Andrei task",
 			description="Task for andrei",
@@ -216,7 +216,7 @@ class ScheduleApiTests(APITestCase):
 
 		task_ids = []
 		for i in range(101):
-			task = Task.objects.create(
+			task = Assignment.objects.create(
 				user=self.user_one,
 				title=f"Task {i}",
 				estimated_duration_minutes=30,
@@ -237,10 +237,10 @@ class ScheduleApiTests(APITestCase):
 		self.client.force_authenticate(user=self.user_one)
 		start = timezone.now()
 
-		task2 = Task.objects.create(
+		task2 = Assignment.objects.create(
 			user=self.user_one, title="Task 2", estimated_duration_minutes=30
 		)
-		task3 = Task.objects.create(
+		task3 = Assignment.objects.create(
 			user=self.user_one, title="Task 3", estimated_duration_minutes=30
 		)
 
@@ -275,7 +275,7 @@ class ScheduleApiTests(APITestCase):
 		response = self.client.post(reverse("task-list-create"), payload, format="json")
 
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-		created_task = Task.objects.get(title="New task")
+		created_task = Assignment.objects.get(title="New task")
 		self.assertEqual(created_task.user, self.user_one)
 
 	def test_create_task_block_rejects_task_owned_by_another_user(self):
@@ -298,7 +298,7 @@ class ScheduleApiTests(APITestCase):
 
 	def test_bulk_create_task_blocks_creates_for_authenticated_users_tasks_only(self):
 		self.client.force_authenticate(user=self.user_one)
-		second_task = Task.objects.create(
+		second_task = Assignment.objects.create(
 			user=self.user_one,
 			title="Second alex task",
 			estimated_duration_minutes=25,

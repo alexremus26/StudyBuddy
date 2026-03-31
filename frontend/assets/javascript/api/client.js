@@ -127,21 +127,21 @@ export async function getMe() {
   return data;
 }
 
-export async function listTasks() {
-  const { data, error, response } = await apiClient.GET('/api/schedule/tasks/');
+export async function listAssignments() {
+  const { data, error, response } = await apiClient.GET('/api/schedule/assignments/');
   if (error) {
     throw toApiError(error, response);
   }
   return data;
 }
 
-export async function createTask(payload) {
-  return postJson('/api/schedule/tasks/', payload);
+export async function createAssignment(payload) {
+  return postJson('/api/schedule/assignments/', payload);
 }
 
-export async function getTask(taskId) {
-  const { data, error, response } = await apiClient.GET('/api/schedule/tasks/{id}/', {
-    params: { path: { id: taskId } },
+export async function getAssignment(assignmentId) {
+  const { data, error, response } = await apiClient.GET('/api/schedule/assignments/{id}/', {
+    params: { path: { id: assignmentId } },
   });
   if (error) {
     throw toApiError(error, response);
@@ -149,10 +149,22 @@ export async function getTask(taskId) {
   return data;
 }
 
-export async function updateTask(taskId, payload) {
-  return patchJson(`/api/schedule/tasks/${taskId}/`, payload);
+export async function updateAssignment(assignmentId, payload) {
+  return patchJson(`/api/schedule/assignments/${assignmentId}/`, payload);
 }
 
-export async function deleteTask(taskId) {
-  return deleteJson(`/api/schedule/tasks/${taskId}/`);
+export async function deleteAssignment(assignmentId) {
+  return deleteJson(`/api/schedule/assignments/${assignmentId}/`);
+}
+
+export async function listSchoolClasses() {
+  const { data, error, response } = await apiClient.GET('/api/schedule/school-classes/');
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
+export async function createSchoolClass(payload) {
+  return postJson('/api/schedule/school-classes/', payload);
 }

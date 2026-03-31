@@ -1,7 +1,7 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from app.models import Task, TaskBlock
+from app.models import Assignment, SchoolClass, TaskBlock
 
 MAX_DURATION_MINUTES : int = 24 * 60
 MAX_BULK_TASKS : int = 100
@@ -40,11 +40,11 @@ def _validate_duration(value):
         )
 
 
-def _ensure_task_belongs_to_user(task, user):
-    """Defense-in-depth: verify task ownership."""
-    if task and user and task.user_id != user.id:
+def _ensure_assignment_belongs_to_user(assignment, user):
+    """Defense-in-depth: verify assignment ownership."""
+    if assignment and user and assignment.user_id != user.id:
         raise serializers.ValidationError(
-            {"task_id": "Selected task does not belong to the authenticated user."}
+            {"assignment_id": "Selected assignment does not belong to the authenticated user."}
         )
 
 
@@ -75,9 +75,9 @@ def _validate_due_date(due_date):
         )
 
 
-class TaskSerializer(serializers.ModelSerializer):
+class AssignmentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Task
+        model = Assignment
         fields = [
             "id",
             "title",
@@ -90,9 +90,9 @@ class TaskSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
-class TaskCreateSerializer(serializers.ModelSerializer):
+class AssignmentCreateSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Task
+        model = Assignment
         fields = [
             "title",
             "description",
@@ -105,9 +105,9 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         return value
 
 
-class TaskEditSerializer(serializers.ModelSerializer):
+class AssignmentEditSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Task
+        model = Assignment
         fields = [
             "title",
             "description",
@@ -122,34 +122,39 @@ class TaskEditSerializer(serializers.ModelSerializer):
 
 
 class TaskBlockSerializer(serializers.ModelSerializer):
-    task = TaskSerializer(read_only=True)
+    assignment = AssignmentSerializer(read_only=True)
+    assignment_id = serializers.PrimaryKeyRelatedField(
+        source="assignment", queryset=Assignment.objects.none(), write_only=True
+    )
     task_id = serializers.PrimaryKeyRelatedField(
-        source="task", queryset=Task.objects.none(), write_only=True
+        source="assignment", queryset=Assignment.objects.none(), write_only=True, required=False
     )
 
     class Meta:
         model = TaskBlock
         fields = [
             "id",
-            "task",
+            "assignment",
+            "assignment_id",
             "task_id",
             "start_time",
             "end_time",
             "actual_duration_minutes",
             "completed",
         ]
-        read_only_fields = ["id", "task"]
+        read_only_fields = ["id", "assignment"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            self.fields["task_id"].queryset = Task.objects.filter(user=request.user)
+            self.fields["assignment_id"].queryset = Assignment.objects.filter(user=request.user)
+            self.fields["task_id"].queryset = Assignment.objects.filter(user=request.user)
 
     def validate(self, attrs):
         start_time = attrs.get("start_time")
         end_time = attrs.get("end_time")
-        task = attrs.get("task")
+        assignment = attrs.get("assignment")
         request = self.context.get("request")
         user = request.user if request else None
 
@@ -158,7 +163,7 @@ class TaskBlockSerializer(serializers.ModelSerializer):
         actual_duration = attrs.get("actual_duration_minutes")
         _validate_duration(actual_duration)
 
-        _ensure_task_belongs_to_user(task, user)
+        _ensure_assignment_belongs_to_user(assignment, user)
 
         exclude_id = self.instance.id if self.instance else None
         if _has_overlap(user, start_time, end_time, exclude_id=exclude_id):
@@ -170,13 +175,17 @@ class TaskBlockSerializer(serializers.ModelSerializer):
 
 
 class TaskBlockCreateSerializer(serializers.ModelSerializer):
+    assignment_id = serializers.PrimaryKeyRelatedField(
+        source="assignment", queryset=Assignment.objects.none()
+    )
     task_id = serializers.PrimaryKeyRelatedField(
-        source="task", queryset=Task.objects.none()
+        source="assignment", queryset=Assignment.objects.none(), required=False
     )
 
     class Meta:
         model = TaskBlock
         fields = [
+            "assignment_id",
             "task_id",
             "start_time",
             "end_time",
@@ -188,12 +197,13 @@ class TaskBlockCreateSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            self.fields["task_id"].queryset = Task.objects.filter(user=request.user)
+            self.fields["assignment_id"].queryset = Assignment.objects.filter(user=request.user)
+            self.fields["task_id"].queryset = Assignment.objects.filter(user=request.user)
 
     def validate(self, attrs):
         start_time = attrs.get("start_time")
         end_time = attrs.get("end_time")
-        task = attrs.get("task")
+        assignment = attrs.get("assignment")
         request = self.context.get("request")
         user = request.user if request else None
 
@@ -202,7 +212,7 @@ class TaskBlockCreateSerializer(serializers.ModelSerializer):
         actual_duration = attrs.get("actual_duration_minutes")
         _validate_duration(actual_duration)
 
-        _ensure_task_belongs_to_user(task, user)
+        _ensure_assignment_belongs_to_user(assignment, user)
 
         if _has_overlap(user, start_time, end_time):
             raise serializers.ValidationError(
@@ -213,13 +223,17 @@ class TaskBlockCreateSerializer(serializers.ModelSerializer):
 
 
 class TaskBlockEditSerializer(serializers.ModelSerializer):
+    assignment_id = serializers.PrimaryKeyRelatedField(
+        source="assignment", queryset=Assignment.objects.none(), required=False
+    )
     task_id = serializers.PrimaryKeyRelatedField(
-        source="task", queryset=Task.objects.none(), required=False
+        source="assignment", queryset=Assignment.objects.none(), required=False
     )
 
     class Meta:
         model = TaskBlock
         fields = [
+            "assignment_id",
             "task_id",
             "start_time",
             "end_time",
@@ -231,12 +245,13 @@ class TaskBlockEditSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            self.fields["task_id"].queryset = Task.objects.filter(user=request.user)
+            self.fields["assignment_id"].queryset = Assignment.objects.filter(user=request.user)
+            self.fields["task_id"].queryset = Assignment.objects.filter(user=request.user)
 
     def validate(self, attrs):
         start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
         end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
-        task = attrs.get("task", getattr(self.instance, "task", None))
+        assignment = attrs.get("assignment", getattr(self.instance, "assignment", None))
         request = self.context.get("request")
         user = request.user if request else None
 
@@ -245,7 +260,7 @@ class TaskBlockEditSerializer(serializers.ModelSerializer):
         actual_duration = attrs.get("actual_duration_minutes", getattr(self.instance, "actual_duration_minutes", None))
         _validate_duration(actual_duration)
 
-        _ensure_task_belongs_to_user(task, user)
+        _ensure_assignment_belongs_to_user(assignment, user)
 
         if _has_overlap(user, start_time, end_time, exclude_id=self.instance.id):
             raise serializers.ValidationError(
@@ -256,9 +271,15 @@ class TaskBlockEditSerializer(serializers.ModelSerializer):
 
 
 class TaskBlockBulkCreateSerializer(serializers.Serializer):
-    task_ids = serializers.ListField(
-        child=serializers.PrimaryKeyRelatedField(queryset=Task.objects.none()),
+    assignment_ids = serializers.ListField(
+        child=serializers.PrimaryKeyRelatedField(queryset=Assignment.objects.none()),
         allow_empty=False,
+        required=False,
+    )
+    task_ids = serializers.ListField(
+        child=serializers.PrimaryKeyRelatedField(queryset=Assignment.objects.none()),
+        allow_empty=False,
+        required=False,
     )
     start_time = serializers.DateTimeField()
     end_time = serializers.DateTimeField()
@@ -268,48 +289,92 @@ class TaskBlockBulkCreateSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            self.fields["task_ids"].child.queryset = Task.objects.filter(
+            self.fields["assignment_ids"].child.queryset = Assignment.objects.filter(
+                user=request.user
+            )
+            self.fields["task_ids"].child.queryset = Assignment.objects.filter(
                 user=request.user
             )
 
-    def validate_task_ids(self, value):
+    def validate_assignment_ids(self, value):
         """Ensure no duplicates and respect max batch size."""
-        task_id_values = [t.id for t in value]
-        if len(task_id_values) != len(set(task_id_values)):
-            raise serializers.ValidationError("task_ids contains duplicate tasks.")
+        assignment_id_values = [assignment.id for assignment in value]
+        if len(assignment_id_values) != len(set(assignment_id_values)):
+            raise serializers.ValidationError("assignment_ids contains duplicate assignments.")
         if len(value) > MAX_BULK_TASKS:
             raise serializers.ValidationError(
-                f"Maximum {MAX_BULK_TASKS} tasks allowed per bulk request."
+                f"Maximum {MAX_BULK_TASKS} assignments allowed per bulk request."
             )
         return value
 
     def validate(self, attrs):
         start_time = attrs.get("start_time")
         end_time = attrs.get("end_time")
-        task_ids = attrs.get("task_ids", [])
+        assignment_ids = attrs.get("assignment_ids") or attrs.get("task_ids") or []
         request = self.context.get("request")
         user = request.user if request else None
 
+        if not assignment_ids:
+            raise serializers.ValidationError(
+                {"assignment_ids": "Provide assignment_ids (or legacy task_ids)."}
+            )
+
+        assignment_id_values = [assignment.id for assignment in assignment_ids]
+        if len(assignment_id_values) != len(set(assignment_id_values)):
+            raise serializers.ValidationError(
+                {"assignment_ids": "assignment_ids contains duplicate assignments."}
+            )
+        if len(assignment_ids) > MAX_BULK_TASKS:
+            raise serializers.ValidationError(
+                {"assignment_ids": f"Maximum {MAX_BULK_TASKS} assignments allowed per bulk request."}
+            )
+
         _validate_time_window(start_time, end_time)
 
-        for task in task_ids:
-            _ensure_task_belongs_to_user(task, user)
+        for assignment in assignment_ids:
+            _ensure_assignment_belongs_to_user(assignment, user)
 
         if _has_overlap(user, start_time, end_time):
             raise serializers.ValidationError(
                 {"non_field_errors": "This time slot overlaps with an existing task block."}
             )
 
+        attrs["assignment_ids"] = assignment_ids
+
         return attrs
 
     def create(self, validated_data):
         user = validated_data.pop("user")
-        task_ids = validated_data.pop("task_ids")
+        assignment_ids = validated_data.pop("assignment_ids")
 
         created_blocks = []
-        for task in task_ids:
+        for assignment in assignment_ids:
             created_blocks.append(
-                TaskBlock.objects.create(user=user, task=task, **validated_data)
+                TaskBlock.objects.create(user=user, assignment=assignment, **validated_data)
             )
         return created_blocks
+
+
+class SchoolClassSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SchoolClass
+        fields = [
+            "id",
+            "name",
+            "day_of_week",
+            "start_time",
+            "end_time",
+            "location",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+    def validate(self, attrs):
+        start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
+        end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
+        if start_time and end_time and end_time <= start_time:
+            raise serializers.ValidationError(
+                {"end_time": "end_time must be after start_time."}
+            )
+        return attrs
 

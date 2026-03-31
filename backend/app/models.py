@@ -12,9 +12,10 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.user.username
-    
-class Task(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tasks')
+
+
+class Assignment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assignments')
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     estimated_duration_minutes = models.PositiveIntegerField(default=60)
@@ -22,9 +23,43 @@ class Task(models.Model):
     due_date = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return self.title
+
+
+class SchoolClass(models.Model):
+    MONDAY = 0
+    TUESDAY = 1
+    WEDNESDAY = 2
+    THURSDAY = 3
+    FRIDAY = 4
+    SATURDAY = 5
+    SUNDAY = 6
+
+    DAY_OF_WEEK_CHOICES = [
+        (MONDAY, "Monday"),
+        (TUESDAY, "Tuesday"),
+        (WEDNESDAY, "Wednesday"),
+        (THURSDAY, "Thursday"),
+        (FRIDAY, "Friday"),
+        (SATURDAY, "Saturday"),
+        (SUNDAY, "Sunday"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='school_classes')
+    name = models.CharField(max_length=255)
+    day_of_week = models.PositiveSmallIntegerField(choices=DAY_OF_WEEK_CHOICES)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    location = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_day_of_week_display()})"
+
 class TaskBlock(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='task_blocks')
-    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='scheduled_blocks')
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='scheduled_blocks')
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     actual_duration_minutes = models.PositiveIntegerField(blank=True, null=True, help_text="How long did it actually take?")

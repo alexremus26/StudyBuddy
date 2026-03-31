@@ -2,7 +2,7 @@ from django.contrib.auth.models import Group, User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
-from .models import Task, UserProfile
+from .models import Assignment, UserProfile
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 
@@ -18,9 +18,9 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         model = User
         fields = ["url", "username", "email", "groups"]
 
-class TaskPreviewSerializer(serializers.ModelSerializer):
+class AssignmentPreviewSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Task
+        model = Assignment
         fields = ['title', 'due_date', 'is_completed']
 
 class UserMeSerializer(serializers.ModelSerializer):
@@ -33,16 +33,16 @@ class UserMeSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = ['id', 'username', 'avatar', 'streak', 'upcoming_tasks']
 
-    @extend_schema_field(TaskPreviewSerializer(many=True))
+    @extend_schema_field(AssignmentPreviewSerializer(many=True))
     def get_upcoming_tasks(self, obj):
         today = timezone.localdate()
         qs = (
-            Task.objects.filter(
+            Assignment.objects.filter(
                 user = obj.user,
                 due_date__date=today,
             ).order_by('due_date')
         )
-        return TaskPreviewSerializer(qs, many=True).data
+        return AssignmentPreviewSerializer(qs, many=True).data
 
 class UserProfileSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(source='user.id', read_only=True)

@@ -96,7 +96,7 @@ export function TaskForm({ task, onSubmit, onClose }) {
 
       await onSubmit(payload);
     } catch (error) {
-      setErrors({ submit: error.message || 'Failed to save task' });
+      setErrors({ submit: error.message || 'Failed to save assignment' });
     } finally {
       setIsSubmitting(false);
     }
@@ -114,7 +114,7 @@ export function TaskForm({ task, onSubmit, onClose }) {
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="bg-card rounded-lg border shadow-lg w-full max-w-md mx-4 p-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <h2 className="text-2xl font-bold mb-4">
-            {task ? 'Edit Task' : 'Create Task'}
+            {task ? 'Edit Assignment' : 'Create Assignment'}
           </h2>
 
           {errors.submit && (
@@ -155,7 +155,7 @@ export function TaskForm({ task, onSubmit, onClose }) {
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
-                placeholder="Add details about the task..."
+                placeholder="Add details about the assignment..."
                 rows={3}
                 className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               />
@@ -235,7 +235,7 @@ export function TaskForm({ task, onSubmit, onClose }) {
                 disabled={isSubmitting}
                 className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'Saving...' : task ? 'Update Task' : 'Create Task'}
+                {isSubmitting ? 'Saving...' : task ? 'Update Assignment' : 'Create Assignment'}
               </button>
             </div>
           </form>

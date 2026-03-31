@@ -3,38 +3,39 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from drf_spectacular.utils import OpenApiTypes, extend_schema
 
-from app.models import Task, TaskBlock
+from app.models import Assignment, SchoolClass, TaskBlock
 from schedule.serializers import (
+    AssignmentCreateSerializer,
+    AssignmentEditSerializer,
+    AssignmentSerializer,
+    SchoolClassSerializer,
 	TaskBlockBulkCreateSerializer,
 	TaskBlockCreateSerializer,
 	TaskBlockEditSerializer,
 	TaskBlockSerializer,
-	TaskCreateSerializer,
-	TaskEditSerializer,
-	TaskSerializer,
 )
 
 
 @extend_schema(
 	methods=["GET"],
-	operation_id="tasks_list",
-	responses={200: TaskSerializer(many=True)},
+	operation_id="assignments_list",
+	responses={200: AssignmentSerializer(many=True)},
 )
 @extend_schema(
 	methods=["POST"],
-	operation_id="tasks_create",
-	request=TaskCreateSerializer,
-	responses={201: TaskCreateSerializer, 400: OpenApiTypes.OBJECT},
+	operation_id="assignments_create",
+	request=AssignmentCreateSerializer,
+	responses={201: AssignmentCreateSerializer, 400: OpenApiTypes.OBJECT},
 )
 @api_view(["GET", "POST"])
 @permission_classes([permissions.IsAuthenticated])
-def task_list_create(request):
+def assignment_list_create(request):
 	if request.method == "GET":
-		tasks = Task.objects.filter(user=request.user).order_by("-created_at")
-		serializer = TaskSerializer(tasks, many=True, context={"request": request})
+		assignments = Assignment.objects.filter(user=request.user).order_by("-created_at")
+		serializer = AssignmentSerializer(assignments, many=True, context={"request": request})
 		return Response(serializer.data)
 
-	serializer = TaskCreateSerializer(data=request.data, context={"request": request})
+	serializer = AssignmentCreateSerializer(data=request.data, context={"request": request})
 	if serializer.is_valid():
 		serializer.save(user=request.user)
 		return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -43,42 +44,109 @@ def task_list_create(request):
 
 @extend_schema(
 	methods=["GET"],
-	operation_id="tasks_retrieve",
-	responses={200: TaskSerializer, 404: OpenApiTypes.OBJECT},
+	operation_id="assignments_retrieve",
+	responses={200: AssignmentSerializer, 404: OpenApiTypes.OBJECT},
 )
 @extend_schema(
 	methods=["PATCH"],
-	operation_id="tasks_update",
-	request=TaskEditSerializer,
-	responses={200: TaskEditSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+	operation_id="assignments_update",
+	request=AssignmentEditSerializer,
+	responses={200: AssignmentEditSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
 )
 @extend_schema(
 	methods=["DELETE"],
-	operation_id="tasks_delete",
+	operation_id="assignments_delete",
 	responses={204: None, 404: OpenApiTypes.OBJECT},
 )
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([permissions.IsAuthenticated])
-def task_detail(request, pk):
+def assignment_detail(request, pk):
 	try:
-		task = Task.objects.get(pk=pk, user=request.user)
-	except Task.DoesNotExist:
+		assignment = Assignment.objects.get(pk=pk, user=request.user)
+	except Assignment.DoesNotExist:
 		return Response(status=status.HTTP_404_NOT_FOUND)
 
 	if request.method == "GET":
-		serializer = TaskSerializer(task, context={"request": request})
+		serializer = AssignmentSerializer(assignment, context={"request": request})
 		return Response(serializer.data)
 
 	if request.method == "PATCH":
-		serializer = TaskEditSerializer(
-			task, data=request.data, partial=True, context={"request": request}
+		serializer = AssignmentEditSerializer(
+			assignment, data=request.data, partial=True, context={"request": request}
 		)
 		if serializer.is_valid():
 			serializer.save()
 			return Response(serializer.data)
 		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-	task.delete()
+	assignment.delete()
+	return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+	methods=["GET"],
+	operation_id="school_classes_list",
+	responses={200: SchoolClassSerializer(many=True)},
+)
+@extend_schema(
+	methods=["POST"],
+	operation_id="school_classes_create",
+	request=SchoolClassSerializer,
+	responses={201: SchoolClassSerializer, 400: OpenApiTypes.OBJECT},
+)
+@api_view(["GET", "POST"])
+@permission_classes([permissions.IsAuthenticated])
+def school_class_list_create(request):
+	if request.method == "GET":
+		school_classes = SchoolClass.objects.filter(user=request.user).order_by("day_of_week", "start_time")
+		serializer = SchoolClassSerializer(school_classes, many=True, context={"request": request})
+		return Response(serializer.data)
+
+	serializer = SchoolClassSerializer(data=request.data, context={"request": request})
+	if serializer.is_valid():
+		serializer.save(user=request.user)
+		return Response(serializer.data, status=status.HTTP_201_CREATED)
+	return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+	methods=["GET"],
+	operation_id="school_classes_retrieve",
+	responses={200: SchoolClassSerializer, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+	methods=["PATCH"],
+	operation_id="school_classes_update",
+	request=SchoolClassSerializer,
+	responses={200: SchoolClassSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+)
+@extend_schema(
+	methods=["DELETE"],
+	operation_id="school_classes_delete",
+	responses={204: None, 404: OpenApiTypes.OBJECT},
+)
+@api_view(["GET", "PATCH", "DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def school_class_detail(request, pk):
+	try:
+		school_class = SchoolClass.objects.get(pk=pk, user=request.user)
+	except SchoolClass.DoesNotExist:
+		return Response(status=status.HTTP_404_NOT_FOUND)
+
+	if request.method == "GET":
+		serializer = SchoolClassSerializer(school_class, context={"request": request})
+		return Response(serializer.data)
+
+	if request.method == "PATCH":
+		serializer = SchoolClassSerializer(
+			school_class, data=request.data, partial=True, context={"request": request}
+		)
+		if serializer.is_valid():
+			serializer.save()
+			return Response(serializer.data)
+		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+	school_class.delete()
 	return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -1,64 +1,69 @@
 import { useEffect, useState } from 'react';
-import { listTasks, createTask, updateTask, deleteTask } from '../api/client';
+import {
+  listAssignments,
+  createAssignment,
+  updateAssignment,
+  deleteAssignment,
+} from '../api/client';
 import { TaskForm } from './TaskForm';
 
 export function Schedule() {
-  const [tasks, setTasks] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  const fetchTasks = async () => {
+  const fetchAssignments = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await listTasks();
-      setTasks(Array.isArray(data) ? data : []);
+      const data = await listAssignments();
+      setAssignments(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err.message || 'Failed to load tasks');
-      setTasks([]);
+      setError(err.message || 'Failed to load assignments');
+      setAssignments([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTasks();
+    fetchAssignments();
   }, []);
 
   const handleCreateTask = async (formData) => {
     try {
       setError(null);
-      await createTask(formData);
+      await createAssignment(formData);
       setShowTaskForm(false);
-      fetchTasks();
+      fetchAssignments();
     } catch (err) {
-      setError(err.message || 'Failed to create task');
+      setError(err.message || 'Failed to create assignment');
     }
   };
 
   const handleUpdateTask = async (taskId, formData) => {
     try {
       setError(null);
-      await updateTask(taskId, formData);
+      await updateAssignment(taskId, formData);
       setEditingTask(null);
       setShowTaskForm(false);
-      fetchTasks();
+      fetchAssignments();
     } catch (err) {
-      setError(err.message || 'Failed to update task');
+      setError(err.message || 'Failed to update assignment');
     }
   };
 
   const handleDeleteTask = async (taskId) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+    if (!confirm('Are you sure you want to delete this assignment?')) return;
 
     try {
       setError(null);
-      await deleteTask(taskId);
-      fetchTasks();
+      await deleteAssignment(taskId);
+      fetchAssignments();
     } catch (err) {
-      setError(err.message || 'Failed to delete task');
+      setError(err.message || 'Failed to delete assignment');
     }
   };
 
@@ -78,13 +83,13 @@ export function Schedule() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Schedule</h1>
-          <p className="text-muted-foreground mt-1">Manage your daily tasks</p>
+          <p className="text-muted-foreground mt-1">Manage your assignments and study work</p>
         </div>
         <button
           onClick={() => handleOpenForm()}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
         >
-          + Add Task
+          + Add Assignment
         </button>
       </div>
 
@@ -107,15 +112,15 @@ export function Schedule() {
       {/* Tasks List */}
       {loading ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading tasks...</p>
+          <p className="text-muted-foreground">Loading assignments...</p>
         </div>
-      ) : tasks.length === 0 ? (
+      ) : assignments.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-card p-8 text-center">
-          <p className="text-muted-foreground">No tasks yet. Create one to get started!</p>
+          <p className="text-muted-foreground">No assignments yet. Create one to get started!</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {tasks.map((task) => (
+          {assignments.map((task) => (
             <div
               key={task.id}
               className="rounded-lg border bg-card p-4 shadow-sm hover:shadow-md transition-shadow"

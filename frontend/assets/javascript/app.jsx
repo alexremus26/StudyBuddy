@@ -185,7 +185,7 @@ function AppShell() {
         onLoginClick={() => navigate('/login')}
         onRegisterClick={() => navigate('/register')}
       />
-      <main className="flex-1 p-4 md:p-8">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <Routes>
           {isLoggedIn ? (
             <>

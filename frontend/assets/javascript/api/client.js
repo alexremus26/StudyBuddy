@@ -168,3 +168,23 @@ export async function listSchoolClasses() {
 export async function createSchoolClass(payload) {
   return postJson('/api/schedule/school-classes/', payload);
 }
+
+export async function deleteSchoolClass(schoolClassId) {
+  return deleteJson(`/api/schedule/school-classes/${schoolClassId}/`);
+}
+
+export async function listTaskBlocks() {
+  const { data, error, response } = await apiClient.GET('/api/schedule/task-blocks/');
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
+export async function createTaskBlock(payload) {
+  return postJson('/api/schedule/task-blocks/', payload);
+}
+
+export async function deleteTaskBlock(taskBlockId) {
+  return deleteJson(`/api/schedule/task-blocks/${taskBlockId}/`);
+}

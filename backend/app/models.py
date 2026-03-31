@@ -46,8 +46,23 @@ class SchoolClass(models.Model):
         (SUNDAY, "Sunday"),
     ]
 
+    CLASS_TYPE_COURSE = "course"
+    CLASS_TYPE_SEMINAR = "seminar"
+    CLASS_TYPE_LAB = "lab"
+    CLASS_TYPE_WORKSHOP = "workshop"
+    CLASS_TYPE_TUTORIAL = "tutorial"
+
+    CLASS_TYPE_CHOICES = [
+        (CLASS_TYPE_COURSE, "Course"),
+        (CLASS_TYPE_SEMINAR, "Seminar"),
+        (CLASS_TYPE_LAB, "Lab"),
+        (CLASS_TYPE_WORKSHOP, "Workshop"),
+        (CLASS_TYPE_TUTORIAL, "Tutorial"),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='school_classes')
     name = models.CharField(max_length=255)
+    class_type = models.CharField(max_length=20, choices=CLASS_TYPE_CHOICES, default=CLASS_TYPE_COURSE)
     day_of_week = models.PositiveSmallIntegerField(choices=DAY_OF_WEEK_CHOICES)
     start_time = models.TimeField()
     end_time = models.TimeField()

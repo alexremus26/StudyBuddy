@@ -8,7 +8,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
   ];
 
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar p-6 md:flex md:flex-col">
+    <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar p-6 md:flex md:flex-col sticky top-0">
       <div className="space-y-2">
         <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">StudyBuddy</p>
         <h1 className="text-2xl font-semibold text-sidebar-foreground">Dashboard</h1>

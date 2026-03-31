@@ -1,16 +1,13 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.shortcuts import render
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import User
 from rest_framework import status, permissions
 from rest_framework.decorators import permission_classes
 from rest_framework.authtoken.models import Token
 from drf_spectacular.utils import OpenApiTypes, extend_schema
 from .serializers import UserSerializer, UserMeSerializer, UserProfileSerializer, UserRegisterSerializer
 from .models import UserProfile
-from django.contrib import messages
-from django.contrib.auth import login
-from django.shortcuts import redirect
 
 
 @extend_schema(
@@ -154,19 +151,3 @@ def user_register(request):
 
 def overview(request):
     return render(request, "index.html")
-
-
-
-def register_page(request):
-    if request.method == "GET":
-        return redirect("overview")
-
-    serializer = UserRegisterSerializer(data=request.POST)
-    if serializer.is_valid():
-        user = serializer.save()
-        Token.objects.get_or_create(user=user)  # optional, keeps API token flow
-        messages.success(request, "Account created successfully.")
-        return redirect("overview")
-
-    messages.error(request, "Registration failed. Please try again from the Auth tab.")
-    return redirect("overview")

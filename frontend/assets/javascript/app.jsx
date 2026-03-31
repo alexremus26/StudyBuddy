@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
@@ -10,6 +10,7 @@ import {
   registerUser,
   getAuthToken,
   setAuthToken,
+  onInvalidAuthToken,
 } from './api/client';
 
 function HomeTab({ profile, onGoSchedule, onLogout }) {
@@ -76,6 +77,13 @@ function AppShell() {
   const [profile, setProfile] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const logout = useCallback(() => {
+    setIsLoggedIn(false);
+    setAuthToken(null);
+    setProfile(null);
+    navigate('/login', { replace: true });
+  }, [navigate]);
 
   const currentPath = location.pathname;
   const currentTab = currentPath === '/schedule'
@@ -165,6 +173,14 @@ function AppShell() {
   }, [isLoggedIn]);
 
   useEffect(() => {
+    const unsubscribe = onInvalidAuthToken(() => {
+      logout();
+    });
+
+    return unsubscribe;
+  }, [logout]);
+
+  useEffect(() => {
     if (!isLoggedIn && !['/login', '/register'].includes(currentPath)) {
       navigate('/login', { replace: true });
       return;
@@ -195,12 +211,7 @@ function AppShell() {
                   <HomeTab
                     profile={profile}
                     onGoSchedule={() => navigate('/schedule')}
-                    onLogout={() => {
-                      setIsLoggedIn(false);
-                      setAuthToken(null);
-                      setProfile(null);
-                      navigate('/login', { replace: true });
-                    }}
+                    onLogout={logout}
                   />
                 )}
               />

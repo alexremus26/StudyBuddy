@@ -1,6 +1,7 @@
 import createClient from 'openapi-fetch';
 
 const TOKEN_STORAGE_KEY = 'studybuddy_token';
+const AUTH_INVALID_EVENT = 'studybuddy:auth-invalid-token';
 
 export function getAuthToken() {
   return window.localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -14,7 +15,31 @@ export function setAuthToken(token) {
   window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
 }
 
+function hasInvalidTokenDetail(error) {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const detail = error.detail;
+  return typeof detail === 'string' && detail.trim().toLowerCase() === 'invalid token.';
+}
+
+function handleInvalidToken(error, response) {
+  if (response?.status !== 401 || !hasInvalidTokenDetail(error)) {
+    return;
+  }
+
+  setAuthToken(null);
+  window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT));
+}
+
+export function onInvalidAuthToken(callback) {
+  window.addEventListener(AUTH_INVALID_EVENT, callback);
+  return () => window.removeEventListener(AUTH_INVALID_EVENT, callback);
+}
+
 function toApiError(error, response) {
+  handleInvalidToken(error, response);
   const status = response?.status ?? 500;
   if (typeof error === 'string') {
     return new Error(`API ${status}: ${error}`);

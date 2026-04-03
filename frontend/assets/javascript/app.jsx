@@ -11,6 +11,7 @@ import {
   getAuthToken,
   setAuthToken,
   onInvalidAuthToken,
+  updateMyProfile,
 } from './api/client';
 
 function HomeTab({ profile, onGoSchedule, onLogout }) {
@@ -148,6 +149,24 @@ function AppShell() {
     }
   };
 
+  const refreshProfile = async () => {
+    const userData = await fetchUserData();
+    setProfile(userData);
+    return userData;
+  };
+
+  const handleAvatarUpload = async (file) => {
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    await updateMyProfile(formData);
+    await refreshProfile();
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -200,6 +219,7 @@ function AppShell() {
         onTabChange={navigateToTab}
         onLoginClick={() => navigate('/login')}
         onRegisterClick={() => navigate('/register')}
+        onAvatarUpload={handleAvatarUpload}
       />
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <Routes>

@@ -2,6 +2,9 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth.models import User
 from app.models import UserProfile, Assignment
+from django.core.files.uploadedfile import SimpleUploadedFile
+from io import BytesIO
+from PIL import Image
 
 # Create your tests here.
 
@@ -59,6 +62,38 @@ class AuthFlowTests(APITestCase):
         user = User.objects.get(username="test_register_3")
         profile = UserProfile.objects.get(user=user)
         self.assertEqual(profile.timezone, "Europe/Bucharest")
+
+    def test_me_profile_put_update_avatar(self):
+        payload = {
+            "username": "test_register_4",
+            "email": "test_register_4@example.com",
+            "password": "studybuddy123",
+        }
+        response = self.client.post("/api/register/", payload, format="json")
+        token = response.data["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+
+        image_buffer = BytesIO()
+        Image.new("RGB", (1, 1), color=(255, 0, 0)).save(image_buffer, format="PNG")
+        image = SimpleUploadedFile(
+            "avatar.png",
+            image_buffer.getvalue(),
+            content_type="image/png",
+        )
+
+        put_response = self.client.put(
+            "/me/profile/",
+            {"avatar": image},
+            format="multipart",
+        )
+
+        self.assertEqual(put_response.status_code, status.HTTP_200_OK)
+        self.assertIn("avatar", put_response.data)
+
+        user = User.objects.get(username="test_register_4")
+        profile = UserProfile.objects.get(user=user)
+        self.assertTrue(profile.avatar.name.startswith("avatars/"))
+        self.assertTrue(profile.avatar.name.endswith(".png"))
 
     def test_register_reserved_username_fails(self):
         """Reject reserved usernames like 'admin', 'root', etc."""

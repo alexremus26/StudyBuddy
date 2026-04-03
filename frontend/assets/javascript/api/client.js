@@ -33,6 +33,10 @@ function handleInvalidToken(error, response) {
   window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT));
 }
 
+function isFormData(value) {
+  return typeof FormData !== 'undefined' && value instanceof FormData;
+}
+
 export function onInvalidAuthToken(callback) {
   window.addEventListener(AUTH_INVALID_EVENT, callback);
   return () => window.removeEventListener(AUTH_INVALID_EVENT, callback);
@@ -54,15 +58,16 @@ function toApiError(error, response) {
 
 async function postJson(url, payload) {
   const token = getAuthToken();
+  const isMultipart = isFormData(payload);
   const response = await fetch(url, {
     method: 'POST',
     credentials: 'omit',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Token ${token}` } : {}),
     },
-    body: JSON.stringify(payload),
+    body: isMultipart ? payload : JSON.stringify(payload),
   });
 
   const data = await response.json().catch(() => null);
@@ -74,15 +79,37 @@ async function postJson(url, payload) {
 
 async function patchJson(url, payload) {
   const token = getAuthToken();
+  const isMultipart = isFormData(payload);
   const response = await fetch(url, {
     method: 'PATCH',
     credentials: 'omit',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Token ${token}` } : {}),
     },
-    body: JSON.stringify(payload),
+    body: isMultipart ? payload : JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(data ?? 'Request failed', response);
+  }
+  return data;
+}
+
+async function putJson(url, payload) {
+  const token = getAuthToken();
+  const isMultipart = isFormData(payload);
+  const response = await fetch(url, {
+    method: 'PUT',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: isMultipart ? payload : JSON.stringify(payload),
   });
 
   const data = await response.json().catch(() => null);
@@ -212,4 +239,8 @@ export async function createTaskBlock(payload) {
 
 export async function deleteTaskBlock(taskBlockId) {
   return deleteJson(`/api/schedule/task-blocks/${taskBlockId}/`);
+}
+
+export async function updateMyProfile(payload) {
+  return putJson('/me/profile/', payload);
 }

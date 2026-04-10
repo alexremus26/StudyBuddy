@@ -23,6 +23,9 @@ class Assignment(models.Model):
     due_date = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        db_table = 'app_task'
+
     def __str__(self):
         return self.title
 
@@ -74,11 +77,19 @@ class SchoolClass(models.Model):
 
 class TaskBlock(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='task_blocks')
-    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='scheduled_blocks')
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name='scheduled_blocks',
+        db_column='task_id',
+    )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     actual_duration_minutes = models.PositiveIntegerField(blank=True, null=True, help_text="How long did it actually take?")
     completed = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'app_taskblock'
 
 class Achievement(models.Model):
     name = models.CharField(max_length=50)

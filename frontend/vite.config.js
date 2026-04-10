@@ -33,7 +33,12 @@ export default defineConfig({
       },
       output: {
         entryFileNames: `js/[name]-bundle.js`,
-        assetFileNames: `css/[name].css`,
+        assetFileNames: (assetInfo) => {
+          if (assetInfo?.name?.endsWith('.css')) {
+            return 'css/[name][extname]';
+          }
+          return 'assets/[name][extname]';
+        },
       },
     },
   },

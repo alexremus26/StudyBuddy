@@ -38,6 +38,14 @@ Python dependencies or backend Dockerfile:
 
 Frontend dependencies or frontend Dockerfile:
 - Use: `docker compose build vite && docker compose up -d vite`
+- For OCR packages specifically: `docker compose exec vite npm install tesseract.js pdfjs-dist`
+
+Ollama local parser:
+- Use: `docker compose up -d` (bootstrap runs automatically as part of startup).
+- The bootstrap container reads `OLLAMA_MODEL` and `OLLAMA_MODEL_CANDIDATES` from `.env` and pulls missing models before backend start.
+- Manual pull, if you need it: `docker compose exec -T ollama ollama pull <your-model-name>`
+- Verify Ollama: `docker compose exec ollama ollama list`
+- Backend uses the in-network URL `http://ollama:11434/v1`
 
 Django models:
 - Use:
@@ -69,4 +77,22 @@ Follow backend logs:
 Create admin user:
 
 `docker compose exec web python manage.py createsuperuser`
+
+## OCR Troubleshooting
+
+PDF worker loading issues:
+- If PDF import stays in processing, rebuild vite and restart: `docker compose build vite && docker compose up -d vite`
+- Confirm frontend dependency install completed in vite container.
+
+OCR language assets fetch issues:
+- First OCR run downloads language assets and can be slow on poor network.
+- Retry once after connection stabilizes.
+
+Large PDF performance:
+- v1 OCR import processes a limited number of pages and may take time for scanned PDFs.
+- Prefer smaller PDFs or split very large files before import.
+
+Permission issues while installing frontend packages:
+- If host npm install fails with EACCES, run installs inside the vite container.
+- Existing flow: `docker compose exec vite npm install ...`
 

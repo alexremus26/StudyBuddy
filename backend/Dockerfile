@@ -24,4 +24,4 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER appuser
 EXPOSE 8000 
  
-CMD sh -c "python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 3 --no-control-socket core.wsgi:application"
+CMD sh -c "python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-180} --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} --keep-alive ${GUNICORN_KEEPALIVE:-5} --no-control-socket core.wsgi:application"

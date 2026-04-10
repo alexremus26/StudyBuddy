@@ -7,6 +7,32 @@ MAX_DURATION_MINUTES : int = 24 * 60
 MAX_BULK_TASKS : int = 100
 
 
+class ScheduleParseRequestSerializer(serializers.Serializer):
+    ocr_text = serializers.CharField(allow_blank=False, trim_whitespace=True)
+    max_blocks = serializers.IntegerField(required=False, min_value=1, max_value=100, default=25)
+    parser_mode = serializers.ChoiceField(
+        choices=["auto", "ollama", "regex"],
+        required=False,
+        default="auto",
+    )
+
+
+class ScheduleParseBlockSerializer(serializers.Serializer):
+    day_of_week = serializers.IntegerField(min_value=0, max_value=6)
+    start_time = serializers.CharField()
+    end_time = serializers.CharField()
+    title = serializers.CharField()
+    confidence = serializers.FloatField(required=False, min_value=0, max_value=1)
+    raw_text = serializers.CharField(required=False, allow_blank=True)
+
+
+class ScheduleParseResponseSerializer(serializers.Serializer):
+    blocks = ScheduleParseBlockSerializer(many=True)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
+    source = serializers.CharField(required=False)
+    model_output = serializers.CharField(required=False, allow_blank=True)
+
+
 def _validate_aware(dt, field_name):
     """Ensure datetime is timezone-aware."""
     if dt is not None:

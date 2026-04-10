@@ -8,12 +8,15 @@ from schedule.serializers import (
     AssignmentCreateSerializer,
     AssignmentEditSerializer,
     AssignmentSerializer,
+	ScheduleParseRequestSerializer,
+	ScheduleParseResponseSerializer,
     SchoolClassSerializer,
 	TaskBlockBulkCreateSerializer,
 	TaskBlockCreateSerializer,
 	TaskBlockEditSerializer,
 	TaskBlockSerializer,
 )
+from schedule.services.ollama_parser import OllamaScheduleParser
 
 
 @extend_schema(
@@ -240,3 +243,27 @@ def task_block_bulk_create(request):
 		).data
 		return Response(response_data, status=status.HTTP_201_CREATED)
 	return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+	methods=["POST"],
+	operation_id="schedule_parse_text",
+	request=ScheduleParseRequestSerializer,
+	responses={200: ScheduleParseResponseSerializer, 400: OpenApiTypes.OBJECT},
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def parse_schedule_text(request):
+	serializer = ScheduleParseRequestSerializer(data=request.data)
+	if not serializer.is_valid():
+		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+	parser = OllamaScheduleParser()
+	result = parser.parse(
+		serializer.validated_data["ocr_text"],
+		max_blocks=serializer.validated_data.get("max_blocks", 25),
+		parser_mode=serializer.validated_data.get("parser_mode", "auto"),
+	)
+	response_serializer = ScheduleParseResponseSerializer(data=result)
+	response_serializer.is_valid(raise_exception=True)
+	return Response(response_serializer.validated_data, status=status.HTTP_200_OK)

@@ -164,6 +164,10 @@ export async function createAssignment(payload) {
   return postJson('/api/schedule/assignments/', payload);
 }
 
+export async function parseScheduleText(payload) {
+  return postJson('/api/schedule/parse-text/', payload);
+}
+
 export async function getAssignment(assignmentId) {
   const { data, error, response } = await apiClient.GET('/api/schedule/assignments/{id}/', {
     params: { path: { id: assignmentId } },
@@ -192,6 +196,10 @@ export async function listSchoolClasses() {
 
 export async function createSchoolClass(payload) {
   return postJson('/api/schedule/school-classes/', payload);
+}
+
+export async function updateSchoolClass(schoolClassId, payload) {
+  return patchJson(`/api/schedule/school-classes/${schoolClassId}/`, payload);
 }
 
 export async function deleteSchoolClass(schoolClassId) {

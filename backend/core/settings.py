@@ -26,6 +26,16 @@ DEBUG = bool(os.environ.get("DEBUG", default=0))
  
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","127.0.0.1").split(",")
 
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434/v1")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
+OLLAMA_MODEL_CANDIDATES = [
+    item.strip()
+    for item in os.environ.get("OLLAMA_MODEL_CANDIDATES", "").split(",")
+    if item.strip()
+]
+OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "45"))
+OLLAMA_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS", "20"))
+
 
 # Application definition
 

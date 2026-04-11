@@ -36,6 +36,13 @@ OLLAMA_MODEL_CANDIDATES = [
 OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "45"))
 OLLAMA_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS", "20"))
 
+SCHEDULE_LAYOUT_PIPELINE_MODE = os.environ.get("SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled").strip().lower()
+if SCHEDULE_LAYOUT_PIPELINE_MODE not in {"disabled", "shadow", "active"}:
+    SCHEDULE_LAYOUT_PIPELINE_MODE = "disabled"
+
+SCHEDULE_LAYOUT_BACKEND = os.environ.get("SCHEDULE_LAYOUT_BACKEND", "opencv_paddle").strip().lower()
+SCHEDULE_LAYOUT_DEVICE = os.environ.get("SCHEDULE_LAYOUT_DEVICE", "auto").strip().lower()
+
 
 # Application definition
 

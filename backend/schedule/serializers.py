@@ -11,7 +11,7 @@ class ScheduleParseRequestSerializer(serializers.Serializer):
     ocr_text = serializers.CharField(allow_blank=False, trim_whitespace=True)
     max_blocks = serializers.IntegerField(required=False, min_value=1, max_value=100, default=25)
     parser_mode = serializers.ChoiceField(
-        choices=["auto", "ollama", "regex"],
+        choices=["auto", "ollama", "regex", "layout_hybrid"],
         required=False,
         default="auto",
     )
@@ -24,6 +24,11 @@ class ScheduleParseBlockSerializer(serializers.Serializer):
     title = serializers.CharField()
     confidence = serializers.FloatField(required=False, min_value=0, max_value=1)
     raw_text = serializers.CharField(required=False, allow_blank=True)
+    bbox = serializers.DictField(required=False)
+    cell_row = serializers.IntegerField(required=False, min_value=0)
+    cell_col = serializers.IntegerField(required=False, min_value=0)
+    page = serializers.IntegerField(required=False, min_value=0)
+    extraction_method = serializers.CharField(required=False, allow_blank=True)
 
 
 class ScheduleParseResponseSerializer(serializers.Serializer):
@@ -31,6 +36,7 @@ class ScheduleParseResponseSerializer(serializers.Serializer):
     warnings = serializers.ListField(child=serializers.CharField(), required=False)
     source = serializers.CharField(required=False)
     model_output = serializers.CharField(required=False, allow_blank=True)
+    diagnostics = serializers.DictField(required=False)
 
 
 def _validate_aware(dt, field_name):

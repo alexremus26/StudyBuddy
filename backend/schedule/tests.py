@@ -1,5 +1,7 @@
 from datetime import timedelta
+from unittest.mock import patch
 
+from django.test import override_settings
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
@@ -319,3 +321,66 @@ class ScheduleApiTests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(TaskBlock.objects.filter(user=self.user_one).count(), 2)
+
+	@patch("schedule.views.OllamaScheduleParser.parse")
+	@override_settings(SCHEDULE_LAYOUT_PIPELINE_MODE="shadow")
+	def test_parse_schedule_text_includes_diagnostics_and_shadow_warning(self, mock_parse):
+		self.client.force_authenticate(user=self.user_one)
+		mock_parse.return_value = {
+			"blocks": [
+				{
+					"day_of_week": 0,
+					"start_time": "09:00",
+					"end_time": "10:00",
+					"title": "Math",
+				}
+			],
+			"warnings": [],
+			"source": "ollama",
+			"model_output": "{}",
+		}
+
+		payload = {
+			"ocr_text": "Monday 09:00-10:00 Math",
+			"parser_mode": "auto",
+		}
+		response = self.client.post(reverse("schedule-parse-text"), payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertIn("diagnostics", response.data)
+		self.assertEqual(response.data["diagnostics"]["layout_pipeline_mode"], "shadow")
+		self.assertTrue(response.data["diagnostics"]["layout_pipeline_enabled"])
+		self.assertIn("elapsed_ms", response.data["diagnostics"])
+		self.assertIn("warnings", response.data)
+		self.assertTrue(
+			any("shadow mode" in warning.lower() for warning in response.data["warnings"])
+		)
+
+		mock_parse.assert_called_once()
+		kwargs = mock_parse.call_args.kwargs
+		self.assertEqual(kwargs.get("layout_pipeline_mode"), "shadow")
+
+	@patch("schedule.views.OllamaScheduleParser.parse")
+	def test_parse_schedule_text_accepts_layout_hybrid_mode(self, mock_parse):
+		self.client.force_authenticate(user=self.user_one)
+		mock_parse.return_value = {
+			"blocks": [],
+			"warnings": ["Layout-hybrid parser mode is not implemented yet; falling back to auto mode."],
+			"source": "ollama",
+			"model_output": "",
+			"diagnostics": {
+				"requested_parser_mode": "layout_hybrid",
+				"effective_parser_mode": "auto",
+			},
+		}
+
+		payload = {
+			"ocr_text": "Luni 08:00-10:00 Programare",
+			"parser_mode": "layout_hybrid",
+		}
+		response = self.client.post(reverse("schedule-parse-text"), payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		mock_parse.assert_called_once()
+		kwargs = mock_parse.call_args.kwargs
+		self.assertEqual(kwargs.get("parser_mode"), "layout_hybrid")

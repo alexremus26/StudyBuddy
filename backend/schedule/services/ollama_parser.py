@@ -47,6 +47,11 @@ DAY_TOKEN_PATTERN = re.compile(
     re.I,
 )
 
+DAY_INLINE_PATTERN = re.compile(
+    r"\b(monday|mon|lu|luni|tuesday|tue|tues|ma|marti|marți|wednesday|wed|mi|miercuri|thursday|thu|jo|joi|friday|fri|vi|vineri|saturday|sat|sa|sâ|sambata|sâmbătă|sunday|sun|du|duminica|duminică)\b",
+    re.I,
+)
+
 INTERVAL_PATTERN = re.compile(
     r"(?:\d{1,2}[:.,]\d{1,2}|\d{3,4})\s*(?:-|to|–|—)\s*(?:\d{1,2}[:.,]\d{1,2}|\d{3,4})",
     re.I,
@@ -287,6 +292,116 @@ def _extract_blocks_from_table_like_ocr(text):
     return blocks
 
 
+def _clean_title_for_layout(line):
+    cleaned = DAY_INLINE_PATTERN.sub("", str(line or ""))
+    cleaned = INTERVAL_PATTERN.sub(" ", cleaned)
+    cleaned = re.sub(r"\s*[|•·]+\s*", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:|\t")
+    return cleaned.strip() or "Imported schedule block"
+
+
+def _extract_blocks_from_layout_hybrid_ocr(text):
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    global_intervals = _extract_time_intervals(text)
+    per_day_interval_index = {day: 0 for day in range(7)}
+    blocks = []
+    current_day = None
+
+    line_patterns = [
+        re.compile(r"^(?P<day>[^\d]{2,20})\s+(?P<start>\d{1,4}(?:[:.,]\d{1,2})?)\s*(?:-|to|–|—)\s*(?P<end>\d{1,4}(?:[:.,]\d{1,2})?)\s*(?:[-:|]\s*)?(?P<title>.*)$", re.I),
+        re.compile(r"^(?P<start>\d{1,4}(?:[:.,]\d{1,2})?)\s*(?:-|to|–|—)\s*(?P<end>\d{1,4}(?:[:.,]\d{1,2})?)\s*(?:[-:|]\s*)?(?P<title>.*)$", re.I),
+    ]
+
+    for line in lines:
+        normalized = line.strip()
+        lowered = normalized.lower()
+        if DAY_TOKEN_PATTERN.fullmatch(lowered):
+            current_day = _normalize_day(lowered)
+            continue
+
+        explicit_day_match = DAY_INLINE_PATTERN.search(lowered)
+        explicit_day = _normalize_day(explicit_day_match.group(0)) if explicit_day_match else None
+
+        matched_direct = False
+        for pattern in line_patterns:
+            match = pattern.match(normalized)
+            if not match:
+                continue
+            groups = match.groupdict()
+            day = _normalize_day(groups.get("day")) if groups.get("day") else None
+            day = explicit_day if explicit_day is not None else day
+            day = current_day if day is None else day
+
+            start = _parse_time(groups.get("start"))
+            end = _parse_time(groups.get("end"))
+            if day is None or not start or not end:
+                continue
+
+            title = _clean_title_for_layout(groups.get("title") or normalized)
+            blocks.append(
+                {
+                    "day_of_week": day,
+                    "start_time": start,
+                    "end_time": end,
+                    "title": title,
+                    "confidence": 0.62,
+                    "raw_text": normalized,
+                    "extraction_method": "layout_hybrid_interval_line",
+                }
+            )
+            matched_direct = True
+            break
+
+        if matched_direct:
+            continue
+
+        if _is_table_header_line(normalized):
+            continue
+
+        day = explicit_day if explicit_day is not None else current_day
+        if day is None:
+            continue
+        if not re.search(r"[A-Za-z]", normalized):
+            continue
+
+        if global_intervals:
+            idx = per_day_interval_index.get(day, 0)
+            start, end = global_intervals[min(idx, len(global_intervals) - 1)]
+            per_day_interval_index[day] = idx + 1
+        else:
+            continue
+
+        blocks.append(
+            {
+                "day_of_week": day,
+                "start_time": start,
+                "end_time": end,
+                "title": _clean_title_for_layout(normalized),
+                "confidence": 0.57,
+                "raw_text": normalized,
+                "extraction_method": "layout_hybrid_table",
+            }
+        )
+
+    deduped = []
+    seen = set()
+    for block in blocks:
+        key = (
+            block.get("day_of_week"),
+            block.get("start_time"),
+            block.get("end_time"),
+            str(block.get("title", "")).strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(block)
+    return deduped
+
+
 class OllamaScheduleParser:
     def __init__(self):
         self.client = OpenAI(
@@ -300,15 +415,61 @@ class OllamaScheduleParser:
             candidates = getattr(settings, "OLLAMA_MODEL_CANDIDATES", []) or []
             self.model = str(candidates[0]).strip() if candidates else ""
 
-    def parse(self, raw_text, max_blocks=25, parser_mode="auto"):
+    def parse(self, raw_text, max_blocks=25, parser_mode="auto", layout_pipeline_mode="disabled"):
         parser_mode = str(parser_mode or "auto").strip().lower()
-        if parser_mode not in {"auto", "ollama", "regex"}:
+        if parser_mode not in {"auto", "ollama", "regex", "layout_hybrid"}:
             parser_mode = "auto"
+
+        layout_pipeline_mode = str(layout_pipeline_mode or "disabled").strip().lower()
+        if layout_pipeline_mode not in {"disabled", "shadow", "active"}:
+            layout_pipeline_mode = "disabled"
+
+        diagnostics = {
+            "requested_parser_mode": parser_mode,
+            "effective_parser_mode": parser_mode,
+            "layout_pipeline_mode": layout_pipeline_mode,
+            "layout_pipeline_enabled": layout_pipeline_mode in {"shadow", "active"},
+            "fallback_used": False,
+            "fallback_source": "",
+            "extraction_method": "",
+            "llm_input_compacted": False,
+            "failure_type": "",
+        }
 
         warnings = []
         llm_input = _build_llm_input(raw_text)
         model_output = ""
         failure_type = ""
+
+        if parser_mode == "layout_hybrid":
+            diagnostics["effective_parser_mode"] = "layout_hybrid"
+            blocks = _extract_blocks_from_layout_hybrid_ocr(raw_text)
+            extraction_method = "layout_hybrid"
+
+            if not blocks:
+                blocks = _extract_blocks_from_regex(raw_text)
+                if blocks:
+                    warnings.append("Layout-hybrid extraction was empty; regex fallback used.")
+                    diagnostics["fallback_used"] = True
+                    diagnostics["fallback_source"] = "regex"
+                    extraction_method = "regex"
+
+            if not blocks:
+                blocks = _extract_blocks_from_table_like_ocr(raw_text)
+                if blocks:
+                    warnings.append("Layout-hybrid extraction was empty; table-like fallback used.")
+                    diagnostics["fallback_used"] = True
+                    diagnostics["fallback_source"] = "table_like_ocr"
+                    extraction_method = "table_like_ocr"
+
+            diagnostics["extraction_method"] = extraction_method
+            return {
+                "blocks": blocks[:max_blocks],
+                "warnings": warnings,
+                "source": "layout_hybrid",
+                "model_output": "",
+                "diagnostics": diagnostics,
+            }
 
         if not self.model and parser_mode in {"auto", "ollama"}:
             warnings.append("No OLLAMA_MODEL configured; using regex fallback.")
@@ -318,23 +479,32 @@ class OllamaScheduleParser:
                     "warnings": warnings,
                     "source": "ollama",
                     "model_output": "No model configured. Set OLLAMA_MODEL or OLLAMA_MODEL_CANDIDATES.",
+                    "diagnostics": diagnostics,
                 }
             parser_mode = "regex"
+            diagnostics["effective_parser_mode"] = parser_mode
 
         if parser_mode == "regex":
+            extraction_method = "regex"
             blocks = _extract_blocks_from_regex(raw_text)
             if not blocks:
                 blocks = _extract_blocks_from_table_like_ocr(raw_text)
                 if blocks:
                     warnings.append("Table-like OCR fallback used because line-based parsing was empty.")
+                    extraction_method = "table_like_ocr"
+                    diagnostics["fallback_used"] = True
+                    diagnostics["fallback_source"] = extraction_method
             else:
                 warnings.append("Regex parser mode was selected.")
+
+            diagnostics["extraction_method"] = extraction_method
 
             return {
                 "blocks": blocks[:max_blocks],
                 "warnings": warnings,
                 "source": "regex",
                 "model_output": "",
+                "diagnostics": diagnostics,
             }
         prompt = (
             "You extract school schedule blocks from OCR text. "
@@ -362,6 +532,7 @@ class OllamaScheduleParser:
             payload, model_output = request_payload(llm_input, 500)
         except BaseException as exc:
             failure_type = exc.__class__.__name__
+            diagnostics["failure_type"] = failure_type
             if exc.__class__.__name__ == "APITimeoutError":
                 retry_input = _build_retry_llm_input(raw_text)
                 if retry_input:
@@ -372,6 +543,7 @@ class OllamaScheduleParser:
                             model_output = retry_output
                     except BaseException as retry_exc:
                         failure_type = retry_exc.__class__.__name__
+                        diagnostics["failure_type"] = failure_type
                         warnings.append(f"Ollama parse failed: {retry_exc.__class__.__name__}")
                 else:
                     warnings.append(f"Ollama parse failed: {exc.__class__.__name__}")
@@ -380,8 +552,10 @@ class OllamaScheduleParser:
 
         if llm_input and len(llm_input) < len(str(raw_text or "")):
             warnings.append("LLM input was compacted from OCR text to reduce timeout risk.")
+            diagnostics["llm_input_compacted"] = True
 
         blocks = []
+        extraction_method = "ollama"
         if isinstance(payload, dict):
             extra_warnings = payload.get("warnings", [])
             if isinstance(extra_warnings, list):
@@ -411,11 +585,17 @@ class OllamaScheduleParser:
             blocks = _extract_blocks_from_regex(raw_text)
             if blocks:
                 warnings.append("Fallback regex parser used because model output was empty or invalid.")
+                extraction_method = "regex"
+                diagnostics["fallback_used"] = True
+                diagnostics["fallback_source"] = extraction_method
 
         if not blocks and parser_mode == "auto":
             blocks = _extract_blocks_from_table_like_ocr(raw_text)
             if blocks:
                 warnings.append("Table-like OCR fallback used because line-based parsing was empty.")
+                extraction_method = "table_like_ocr"
+                diagnostics["fallback_used"] = True
+                diagnostics["fallback_source"] = extraction_method
 
         if not blocks and parser_mode == "ollama":
             warnings.append("Ollama-only mode was selected; regex fallback is disabled.")
@@ -432,9 +612,12 @@ class OllamaScheduleParser:
                 f"{preview}"
             )
 
+        diagnostics["extraction_method"] = extraction_method
+
         return {
             "blocks": blocks[:max_blocks],
             "warnings": warnings,
             "source": "ollama" if parser_mode != "regex" else "regex",
             "model_output": (model_output or "")[:4000],
+            "diagnostics": diagnostics,
         }

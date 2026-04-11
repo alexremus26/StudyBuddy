@@ -81,7 +81,6 @@ class TaskBlock(models.Model):
         Assignment,
         on_delete=models.CASCADE,
         related_name='scheduled_blocks',
-        db_column='task_id',
     )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()

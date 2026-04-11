@@ -47,9 +47,12 @@ const IMPORT_CLASS_TYPE_ALIASES = {
 
 const PARSER_MODES = [
   { value: 'auto', label: 'Auto (Ollama -> Fallback)' },
+  { value: 'layout_hybrid', label: 'Layout Hybrid (new local)' },
   { value: 'ollama', label: 'Ollama only' },
   { value: 'regex', label: 'Regex only' },
 ];
+
+const PARSER_COMPARE_MODES = ['layout_hybrid', 'auto', 'regex'];
 
 const emptyClassForm = {
   name: '',
@@ -500,6 +503,13 @@ function validateSchoolClassInput(formData, schoolClasses, options = {}) {
 }
 
 function getParserBadge(source) {
+  if (source === 'layout_hybrid') {
+    return {
+      label: 'Parser: Layout Hybrid (new)',
+      className: 'bg-indigo-500/15 text-indigo-700 border-indigo-500/30',
+    };
+  }
+
   if (source === 'ollama') {
     return {
       label: 'Parser: Ollama (qwen)',
@@ -527,6 +537,11 @@ function getParserBadge(source) {
   };
 }
 
+function getParserModeLabel(mode) {
+  const hit = PARSER_MODES.find((item) => item.value === mode);
+  return hit?.label || mode;
+}
+
 export function Schedule() {
   const [assignments, setAssignments] = useState([]);
   const [schoolClasses, setSchoolClasses] = useState([]);
@@ -544,7 +559,9 @@ export function Schedule() {
   const [taskBlockFormLoading, setTaskBlockFormLoading] = useState(false);
   const [isOcrImporting, setIsOcrImporting] = useState(false);
   const [lastImportMeta, setLastImportMeta] = useState(null);
+  const [lastComparisonMeta, setLastComparisonMeta] = useState(null);
   const [parserMode, setParserMode] = useState('auto');
+  const [scheduleImportAction, setScheduleImportAction] = useState('import');
   const scheduleFileInputRef = useRef(null);
 
   const fetchScheduleData = async () => {
@@ -759,9 +776,59 @@ export function Schedule() {
     setEditingTask(null);
   };
 
-  const handleAddScheduleClick = () => {
+  const handleAddScheduleClick = (action = 'import') => {
     setError(null);
+    setScheduleImportAction(action);
     scheduleFileInputRef.current?.click();
+  };
+
+  const buildComparisonEntry = (mode, parserResult, normalizedBlocks) => {
+    const confidenceValues = normalizedBlocks
+      .map((block) => Number(block.confidence || 0))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const avgConfidence = confidenceValues.length > 0
+      ? (confidenceValues.reduce((acc, value) => acc + value, 0) / confidenceValues.length)
+      : 0;
+
+    return {
+      mode,
+      modeLabel: getParserModeLabel(mode),
+      source: String(parserResult?.source || 'unknown'),
+      count: normalizedBlocks.length,
+      avgConfidence,
+      warnings: Array.isArray(parserResult?.warnings)
+        ? parserResult.warnings.filter(Boolean).map((warning) => String(warning))
+        : [],
+      diagnostics: parserResult?.diagnostics || {},
+      sampleTitles: normalizedBlocks.slice(0, 3).map((block) => block.title),
+    };
+  };
+
+  const runParserComparison = async (parsedText) => {
+    const results = await Promise.all(
+      PARSER_COMPARE_MODES.map(async (mode) => {
+        const parserResult = await parseScheduleText({
+          ocr_text: parsedText,
+          max_blocks: 25,
+          parser_mode: mode,
+        });
+        const normalizedBlocks = normalizeScheduleBlocks(parserResult?.blocks);
+        return buildComparisonEntry(mode, parserResult, normalizedBlocks);
+      }),
+    );
+
+    const ranked = [...results].sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return b.avgConfidence - a.avgConfidence;
+    });
+
+    return {
+      ranking: ranked,
+      bestMode: ranked[0]?.mode || null,
+      generatedAt: new Date().toISOString(),
+    };
   };
 
   const handleScheduleFileSelected = async (event) => {
@@ -788,6 +855,25 @@ export function Schedule() {
       if (!parsedText) {
         throw new Error('Could not extract readable text from this file.');
       }
+
+      const shouldCompareOnly = scheduleImportAction === 'compare';
+      if (shouldCompareOnly) {
+        const comparison = await runParserComparison(parsedText);
+        setLastComparisonMeta(comparison);
+        const best = comparison?.ranking?.[0];
+        setLastImportMeta({
+          source: String(best?.source || 'unknown'),
+          importedCount: 0,
+          warnings: [
+            'Parser test mode only: no classes were imported.',
+            best?.modeLabel ? `Top parser by extracted blocks: ${best.modeLabel}.` : '',
+          ].filter(Boolean),
+          modelOutput: '',
+        });
+        return;
+      }
+
+      setLastComparisonMeta(null);
 
       const parserResult = await parseScheduleText({
         ocr_text: parsedText,
@@ -854,6 +940,7 @@ export function Schedule() {
       setError(err.message || 'Failed to import schedule from file');
     } finally {
       setIsOcrImporting(false);
+      setScheduleImportAction('import');
       if (event.target) {
         event.target.value = '';
       }
@@ -882,11 +969,19 @@ export function Schedule() {
             ))}
           </select>
           <button
-            onClick={handleAddScheduleClick}
+            onClick={() => handleAddScheduleClick('import')}
             disabled={isOcrImporting}
             className="px-4 py-2 border border-input rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isOcrImporting ? 'Importing Schedule...' : 'Add Schedule (OCR)'}
+          </button>
+          <button
+            onClick={() => handleAddScheduleClick('compare')}
+            disabled={isOcrImporting}
+            className="px-4 py-2 border border-indigo-400/60 text-indigo-700 rounded-lg hover:bg-indigo-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Runs layout_hybrid, auto, and regex in parallel without importing classes"
+          >
+            {isOcrImporting ? 'Testing Parsers...' : 'Test OCR Parsers'}
           </button>
           <button
             onClick={() => handleOpenForm()}
@@ -934,6 +1029,39 @@ export function Schedule() {
               {lastImportMeta.modelOutput || 'No raw output captured for this attempt. If parser source is regex or frontend-fallback, Ollama content may not exist.'}
             </pre>
           </details>
+        </div>
+      ) : null}
+
+      {lastComparisonMeta?.ranking?.length ? (
+        <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 text-sm">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="font-semibold text-indigo-900">Parser Comparison (No Import)</h3>
+            {lastComparisonMeta.bestMode ? (
+              <span className="text-xs text-indigo-800/80">
+                Best by extracted blocks: {getParserModeLabel(lastComparisonMeta.bestMode)}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {lastComparisonMeta.ranking.map((entry) => (
+              <div key={entry.mode} className="rounded-md border border-indigo-500/20 bg-background/80 p-3">
+                <p className="text-sm font-medium">{entry.modeLabel}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Source: {entry.source}</p>
+                <p className="text-xs text-muted-foreground">Blocks: {entry.count}</p>
+                <p className="text-xs text-muted-foreground">Avg confidence: {entry.avgConfidence.toFixed(2)}</p>
+                {entry.sampleTitles.length ? (
+                  <p className="mt-2 text-xs text-foreground/90">
+                    Sample: {entry.sampleTitles.join(' | ')}
+                  </p>
+                ) : null}
+                {entry.warnings.length ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {entry.warnings.slice(0, 2).join(' ')}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 

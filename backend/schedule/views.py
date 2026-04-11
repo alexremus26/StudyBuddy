@@ -2,6 +2,9 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from drf_spectacular.utils import OpenApiTypes, extend_schema
+from django.conf import settings
+
+import time
 
 from app.models import Assignment, SchoolClass, TaskBlock
 from schedule.serializers import (
@@ -258,12 +261,38 @@ def parse_schedule_text(request):
 	if not serializer.is_valid():
 		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+	requested_parser_mode = serializer.validated_data.get("parser_mode", "auto")
+	layout_pipeline_mode = getattr(settings, "SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled")
+
 	parser = OllamaScheduleParser()
+	start = time.perf_counter()
 	result = parser.parse(
 		serializer.validated_data["ocr_text"],
 		max_blocks=serializer.validated_data.get("max_blocks", 25),
-		parser_mode=serializer.validated_data.get("parser_mode", "auto"),
+		parser_mode=requested_parser_mode,
+		layout_pipeline_mode=layout_pipeline_mode,
 	)
+	elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+
+	result = result or {}
+	diagnostics = result.get("diagnostics")
+	if not isinstance(diagnostics, dict):
+		diagnostics = {}
+
+	diagnostics.setdefault("requested_parser_mode", requested_parser_mode)
+	diagnostics.setdefault("effective_parser_mode", requested_parser_mode)
+	diagnostics["layout_pipeline_mode"] = layout_pipeline_mode
+	diagnostics["layout_pipeline_enabled"] = layout_pipeline_mode in {"shadow", "active"}
+	diagnostics["elapsed_ms"] = elapsed_ms
+
+	warnings = [str(item) for item in (result.get("warnings") or []) if item]
+	if layout_pipeline_mode == "shadow":
+		shadow_msg = "Layout pipeline shadow mode is enabled; live output still uses the legacy extraction path."
+		if shadow_msg not in warnings:
+			warnings.append(shadow_msg)
+
+	result["warnings"] = warnings
+	result["diagnostics"] = diagnostics
 	response_serializer = ScheduleParseResponseSerializer(data=result)
 	response_serializer.is_valid(raise_exception=True)
 	return Response(response_serializer.validated_data, status=status.HTTP_200_OK)

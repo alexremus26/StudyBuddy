@@ -14,6 +14,11 @@ urlpatterns = [
 		name="school-class-list-create",
 	),
 	path(
+		"school-classes/delete-all/",
+		views.school_class_delete_all,
+		name="school-class-delete-all",
+	),
+	path(
 		"school-classes/<int:pk>/",
 		views.school_class_detail,
 		name="school-class-detail",

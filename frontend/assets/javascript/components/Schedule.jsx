@@ -8,6 +8,7 @@ import {
   createSchoolClass,
   updateSchoolClass,
   deleteSchoolClass,
+  deleteAllSchoolClasses,
   listTaskBlocks,
   createTaskBlock,
   deleteTaskBlock,
@@ -44,15 +45,6 @@ const IMPORT_CLASS_TYPE_ALIASES = {
   workshop: 'workshop',
   tutorial: 'tutorial',
 };
-
-const PARSER_MODES = [
-  { value: 'auto', label: 'Auto (Ollama -> Fallback)' },
-  { value: 'layout_hybrid', label: 'Layout Hybrid (new local)' },
-  { value: 'ollama', label: 'Ollama only' },
-  { value: 'regex', label: 'Regex only' },
-];
-
-const PARSER_COMPARE_MODES = ['layout_hybrid', 'auto', 'regex'];
 
 const emptyClassForm = {
   name: '',
@@ -433,6 +425,32 @@ function parseImportedSchoolClass(block) {
   };
 }
 
+function buildSchoolClassIdentity({ name, day_of_week, start_time, end_time }) {
+  return [
+    String(name || '').trim().toLowerCase(),
+    Number(day_of_week),
+    String(start_time || '').trim().slice(0, 5),
+    String(end_time || '').trim().slice(0, 5),
+  ].join('|');
+}
+
+function getDuplicateSchoolClassMessage(error) {
+  const message = String(error?.message || '');
+  if (!message) {
+    return '';
+  }
+
+  if (message.includes('same name, day, and time already exists')) {
+    return 'A class with the same name, day, and time already exists.';
+  }
+
+  if (message.includes('overlaps with an existing class on the same day')) {
+    return 'This class overlaps with an existing class on the same day.';
+  }
+
+  return '';
+}
+
 function validateSchoolClassInput(formData, schoolClasses, options = {}) {
   const { excludeId = null } = options;
   const name = String(formData.name || '').trim();
@@ -510,17 +528,10 @@ function getParserBadge(source) {
     };
   }
 
-  if (source === 'ollama') {
+  if (source === 'gemini_vision') {
     return {
-      label: 'Parser: Ollama (qwen)',
-      className: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
-    };
-  }
-
-  if (source === 'regex') {
-    return {
-      label: 'Parser: Backend Regex Fallback',
-      className: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+      label: 'Parser: Gemini Vision',
+      className: 'bg-blue-500/15 text-blue-700 border-blue-500/30',
     };
   }
 
@@ -535,11 +546,6 @@ function getParserBadge(source) {
     label: 'Parser: Unknown',
     className: 'bg-muted text-muted-foreground border-border',
   };
-}
-
-function getParserModeLabel(mode) {
-  const hit = PARSER_MODES.find((item) => item.value === mode);
-  return hit?.label || mode;
 }
 
 export function Schedule() {
@@ -559,9 +565,6 @@ export function Schedule() {
   const [taskBlockFormLoading, setTaskBlockFormLoading] = useState(false);
   const [isOcrImporting, setIsOcrImporting] = useState(false);
   const [lastImportMeta, setLastImportMeta] = useState(null);
-  const [lastComparisonMeta, setLastComparisonMeta] = useState(null);
-  const [parserMode, setParserMode] = useState('auto');
-  const [scheduleImportAction, setScheduleImportAction] = useState('import');
   const scheduleFileInputRef = useRef(null);
 
   const fetchScheduleData = async () => {
@@ -662,6 +665,20 @@ export function Schedule() {
       fetchScheduleData();
     } catch (err) {
       setError(err.message || 'Failed to delete school class');
+    }
+  };
+
+  const handleDeleteAllSchoolClasses = async () => {
+    if (!confirm('Delete ALL school classes? This cannot be undone.')) return;
+
+    try {
+      setError(null);
+      await deleteAllSchoolClasses();
+      setEditingSchoolClassId(null);
+      setEditingClassForm(emptyClassForm);
+      fetchScheduleData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete all school classes');
     }
   };
 
@@ -776,59 +793,9 @@ export function Schedule() {
     setEditingTask(null);
   };
 
-  const handleAddScheduleClick = (action = 'import') => {
+  const handleAddScheduleClick = () => {
     setError(null);
-    setScheduleImportAction(action);
     scheduleFileInputRef.current?.click();
-  };
-
-  const buildComparisonEntry = (mode, parserResult, normalizedBlocks) => {
-    const confidenceValues = normalizedBlocks
-      .map((block) => Number(block.confidence || 0))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    const avgConfidence = confidenceValues.length > 0
-      ? (confidenceValues.reduce((acc, value) => acc + value, 0) / confidenceValues.length)
-      : 0;
-
-    return {
-      mode,
-      modeLabel: getParserModeLabel(mode),
-      source: String(parserResult?.source || 'unknown'),
-      count: normalizedBlocks.length,
-      avgConfidence,
-      warnings: Array.isArray(parserResult?.warnings)
-        ? parserResult.warnings.filter(Boolean).map((warning) => String(warning))
-        : [],
-      diagnostics: parserResult?.diagnostics || {},
-      sampleTitles: normalizedBlocks.slice(0, 3).map((block) => block.title),
-    };
-  };
-
-  const runParserComparison = async (parsedText) => {
-    const results = await Promise.all(
-      PARSER_COMPARE_MODES.map(async (mode) => {
-        const parserResult = await parseScheduleText({
-          ocr_text: parsedText,
-          max_blocks: 25,
-          parser_mode: mode,
-        });
-        const normalizedBlocks = normalizeScheduleBlocks(parserResult?.blocks);
-        return buildComparisonEntry(mode, parserResult, normalizedBlocks);
-      }),
-    );
-
-    const ranked = [...results].sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      return b.avgConfidence - a.avgConfidence;
-    });
-
-    return {
-      ranking: ranked,
-      bestMode: ranked[0]?.mode || null,
-      generatedAt: new Date().toISOString(),
-    };
   };
 
   const handleScheduleFileSelected = async (event) => {
@@ -856,50 +823,43 @@ export function Schedule() {
         throw new Error('Could not extract readable text from this file.');
       }
 
-      const shouldCompareOnly = scheduleImportAction === 'compare';
-      if (shouldCompareOnly) {
-        const comparison = await runParserComparison(parsedText);
-        setLastComparisonMeta(comparison);
-        const best = comparison?.ranking?.[0];
-        setLastImportMeta({
-          source: String(best?.source || 'unknown'),
-          importedCount: 0,
-          warnings: [
-            'Parser test mode only: no classes were imported.',
-            best?.modeLabel ? `Top parser by extracted blocks: ${best.modeLabel}.` : '',
-          ].filter(Boolean),
-          modelOutput: '',
-        });
-        return;
-      }
-
-      setLastComparisonMeta(null);
-
       const parserResult = await parseScheduleText({
         ocr_text: parsedText,
         max_blocks: 25,
-        parser_mode: parserMode,
       });
 
       const parsedBlocks = normalizeScheduleBlocks(parserResult?.blocks);
-      const usedFrontendFallback = parserMode === 'auto' && parsedBlocks.length === 0;
-      const blocksToUse = usedFrontendFallback ? parseScheduleBlocksFromText(parsedText) : parsedBlocks;
-      const parserSource = usedFrontendFallback ? 'frontend-fallback' : String(parserResult?.source || 'unknown');
+      const blocksToUse = parsedBlocks.length > 0 ? parsedBlocks : parseScheduleBlocksFromText(parsedText);
+      const parserSource = parsedBlocks.length > 0 ? String(parserResult?.source || 'unknown') : 'frontend-fallback';
       const parserWarnings = Array.isArray(parserResult?.warnings)
         ? parserResult.warnings.filter(Boolean).map((warning) => String(warning))
         : [];
       const parserModelOutput = String(parserResult?.model_output || '').trim();
+      const parserDiagnostics = parserResult?.diagnostics && typeof parserResult.diagnostics === 'object'
+        ? parserResult.diagnostics
+        : {};
+      const parserConfidence = Number(parserDiagnostics?.hybrid_avg_confidence || 0);
+      const parserConfidenceThreshold = Number(parserDiagnostics?.confidence_threshold || 0);
       if (blocksToUse.length === 0) {
         setLastImportMeta({
           source: parserSource,
           importedCount: 0,
           warnings: parserWarnings,
           modelOutput: parserModelOutput,
+          confidence: Number.isFinite(parserConfidence) && parserConfidence > 0 ? parserConfidence : null,
+          confidenceThreshold: Number.isFinite(parserConfidenceThreshold) && parserConfidenceThreshold > 0
+            ? parserConfidenceThreshold
+            : null,
         });
         throw new Error('No school classes found. Use lines like: Monday 09:00-11:00 Math. Check parser output below.');
       }
 
       let importedCount = 0;
+      const seenImportKeys = new Set(
+        schoolClasses.map((schoolClass) => buildSchoolClassIdentity(schoolClass)),
+      );
+      const skippedDuplicates = [];
+
       for (const block of blocksToUse) {
         const blockDay = Number.isInteger(block.day_of_week) ? block.day_of_week : null;
         if (blockDay == null) {
@@ -913,15 +873,38 @@ export function Schedule() {
         }
 
         const importedSchoolClass = parseImportedSchoolClass(block);
-        await createSchoolClass({
+        const draftSchoolClass = {
           name: importedSchoolClass.name.slice(0, 255),
-          class_type: importedSchoolClass.class_type,
           day_of_week: blockDay,
           start_time: formatImportedTimeParts(startParts),
           end_time: formatImportedTimeParts(endParts),
-          location: importedSchoolClass.location.slice(0, 255),
-        });
-        importedCount += 1;
+        };
+        const importKey = buildSchoolClassIdentity(draftSchoolClass);
+
+        if (seenImportKeys.has(importKey)) {
+          skippedDuplicates.push(`${draftSchoolClass.name} (${draftSchoolClass.start_time}-${draftSchoolClass.end_time})`);
+          continue;
+        }
+
+        try {
+          await createSchoolClass({
+            name: draftSchoolClass.name,
+            class_type: importedSchoolClass.class_type,
+            day_of_week: draftSchoolClass.day_of_week,
+            start_time: draftSchoolClass.start_time,
+            end_time: draftSchoolClass.end_time,
+            location: importedSchoolClass.location.slice(0, 255),
+          });
+          seenImportKeys.add(importKey);
+          importedCount += 1;
+        } catch (error) {
+          const duplicateMessage = getDuplicateSchoolClassMessage(error);
+          if (duplicateMessage) {
+            skippedDuplicates.push(`${draftSchoolClass.name} (${draftSchoolClass.start_time}-${draftSchoolClass.end_time})`);
+            continue;
+          }
+          throw error;
+        }
       }
 
       if (importedCount === 0) {
@@ -931,8 +914,12 @@ export function Schedule() {
       setLastImportMeta({
         source: parserSource,
         importedCount,
-        warnings: parserWarnings,
+        warnings: [...parserWarnings, ...skippedDuplicates.map((item) => `Skipped duplicate class: ${item}.`)],
         modelOutput: parserModelOutput,
+        confidence: Number.isFinite(parserConfidence) && parserConfidence > 0 ? parserConfidence : null,
+        confidenceThreshold: Number.isFinite(parserConfidenceThreshold) && parserConfidenceThreshold > 0
+          ? parserConfidenceThreshold
+          : null,
       });
 
       await fetchScheduleData();
@@ -940,7 +927,6 @@ export function Schedule() {
       setError(err.message || 'Failed to import schedule from file');
     } finally {
       setIsOcrImporting(false);
-      setScheduleImportAction('import');
       if (event.target) {
         event.target.value = '';
       }
@@ -957,31 +943,12 @@ export function Schedule() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={parserMode}
-            onChange={(event) => setParserMode(event.target.value)}
-            disabled={isOcrImporting}
-            className="px-3 py-2 border border-input rounded-lg bg-background text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Choose parser mode for OCR import"
-          >
-            {PARSER_MODES.map((mode) => (
-              <option key={mode.value} value={mode.value}>{mode.label}</option>
-            ))}
-          </select>
           <button
-            onClick={() => handleAddScheduleClick('import')}
+            onClick={() => handleAddScheduleClick()}
             disabled={isOcrImporting}
             className="px-4 py-2 border border-input rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isOcrImporting ? 'Importing Schedule...' : 'Add Schedule (OCR)'}
-          </button>
-          <button
-            onClick={() => handleAddScheduleClick('compare')}
-            disabled={isOcrImporting}
-            className="px-4 py-2 border border-indigo-400/60 text-indigo-700 rounded-lg hover:bg-indigo-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Runs layout_hybrid, auto, and regex in parallel without importing classes"
-          >
-            {isOcrImporting ? 'Testing Parsers...' : 'Test OCR Parsers'}
           </button>
           <button
             onClick={() => handleOpenForm()}
@@ -1015,53 +982,20 @@ export function Schedule() {
             <span className="text-muted-foreground">
               Imported {lastImportMeta.importedCount} class{lastImportMeta.importedCount === 1 ? '' : 'es'}
             </span>
+            {typeof lastImportMeta.confidence === 'number' ? (
+              <span className="text-muted-foreground text-xs">
+                Confidence: {lastImportMeta.confidence.toFixed(2)}
+                {typeof lastImportMeta.confidenceThreshold === 'number'
+                  ? ` (threshold ${lastImportMeta.confidenceThreshold.toFixed(2)})`
+                  : ''}
+              </span>
+            ) : null}
           </div>
           {Array.isArray(lastImportMeta.warnings) && lastImportMeta.warnings.length > 0 ? (
             <p className="mt-2 text-xs text-muted-foreground">
               {lastImportMeta.warnings.join(' ')}
             </p>
           ) : null}
-          <details className="mt-3 rounded-md border border-input/80 bg-background/70 p-2">
-            <summary className="cursor-pointer text-xs font-medium text-foreground">
-              Show parser raw output
-            </summary>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-muted/40 p-2 text-xs text-muted-foreground">
-              {lastImportMeta.modelOutput || 'No raw output captured for this attempt. If parser source is regex or frontend-fallback, Ollama content may not exist.'}
-            </pre>
-          </details>
-        </div>
-      ) : null}
-
-      {lastComparisonMeta?.ranking?.length ? (
-        <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 text-sm">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="font-semibold text-indigo-900">Parser Comparison (No Import)</h3>
-            {lastComparisonMeta.bestMode ? (
-              <span className="text-xs text-indigo-800/80">
-                Best by extracted blocks: {getParserModeLabel(lastComparisonMeta.bestMode)}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            {lastComparisonMeta.ranking.map((entry) => (
-              <div key={entry.mode} className="rounded-md border border-indigo-500/20 bg-background/80 p-3">
-                <p className="text-sm font-medium">{entry.modeLabel}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Source: {entry.source}</p>
-                <p className="text-xs text-muted-foreground">Blocks: {entry.count}</p>
-                <p className="text-xs text-muted-foreground">Avg confidence: {entry.avgConfidence.toFixed(2)}</p>
-                {entry.sampleTitles.length ? (
-                  <p className="mt-2 text-xs text-foreground/90">
-                    Sample: {entry.sampleTitles.join(' | ')}
-                  </p>
-                ) : null}
-                {entry.warnings.length ? (
-                  <p className="mt-2 text-xs text-amber-700">
-                    {entry.warnings.slice(0, 2).join(' ')}
-                  </p>
-                ) : null}
-              </div>
-            ))}
-          </div>
         </div>
       ) : null}
 
@@ -1087,6 +1021,14 @@ export function Schedule() {
               <p className="text-sm text-muted-foreground mt-1">
                 Add weekly fixed slots that represent your school timetable.
               </p>
+              <button
+                type="button"
+                onClick={handleDeleteAllSchoolClasses}
+                disabled={schoolClasses.length === 0}
+                className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Delete All School Classes
+              </button>
 
               <form className="mt-4 space-y-3" onSubmit={handleCreateSchoolClass}>
                 <input

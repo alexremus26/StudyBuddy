@@ -19,7 +19,7 @@ from schedule.serializers import (
 	TaskBlockEditSerializer,
 	TaskBlockSerializer,
 )
-from schedule.services.ollama_parser import OllamaScheduleParser
+from schedule.services.schedule_parser import ScheduleParser
 
 
 @extend_schema(
@@ -113,6 +113,18 @@ def school_class_list_create(request):
 		serializer.save(user=request.user)
 		return Response(serializer.data, status=status.HTTP_201_CREATED)
 	return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+	methods=["DELETE"],
+	operation_id="school_classes_delete_all",
+	responses={200: OpenApiTypes.OBJECT},
+)
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def school_class_delete_all(request):
+	deleted_count, _ = SchoolClass.objects.filter(user=request.user).delete()
+	return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
 
 
 @extend_schema(
@@ -261,15 +273,13 @@ def parse_schedule_text(request):
 	if not serializer.is_valid():
 		return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-	requested_parser_mode = serializer.validated_data.get("parser_mode", "auto")
 	layout_pipeline_mode = getattr(settings, "SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled")
 
-	parser = OllamaScheduleParser()
+	parser = ScheduleParser()
 	start = time.perf_counter()
 	result = parser.parse(
 		serializer.validated_data["ocr_text"],
 		max_blocks=serializer.validated_data.get("max_blocks", 25),
-		parser_mode=requested_parser_mode,
 		layout_pipeline_mode=layout_pipeline_mode,
 	)
 	elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -279,8 +289,6 @@ def parse_schedule_text(request):
 	if not isinstance(diagnostics, dict):
 		diagnostics = {}
 
-	diagnostics.setdefault("requested_parser_mode", requested_parser_mode)
-	diagnostics.setdefault("effective_parser_mode", requested_parser_mode)
 	diagnostics["layout_pipeline_mode"] = layout_pipeline_mode
 	diagnostics["layout_pipeline_enabled"] = layout_pipeline_mode in {"shadow", "active"}
 	diagnostics["elapsed_ms"] = elapsed_ms

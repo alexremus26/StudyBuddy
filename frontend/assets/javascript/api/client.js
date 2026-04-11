@@ -233,6 +233,24 @@ export async function deleteSchoolClass(schoolClassId) {
   return deleteJson(`/api/schedule/school-classes/${schoolClassId}/`);
 }
 
+export async function deleteAllSchoolClasses() {
+  const token = getAuthToken();
+  const response = await fetch('/api/schedule/school-classes/delete-all/', {
+    method: 'DELETE',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(data ?? 'Request failed', response);
+  }
+  return data;
+}
+
 export async function listTaskBlocks() {
   const { data, error, response } = await apiClient.GET('/api/schedule/task-blocks/');
   if (error) {

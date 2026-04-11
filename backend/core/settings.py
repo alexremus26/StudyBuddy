@@ -26,15 +26,11 @@ DEBUG = bool(os.environ.get("DEBUG", default=0))
  
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","127.0.0.1").split(",")
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434/v1")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
-OLLAMA_MODEL_CANDIDATES = [
-    item.strip()
-    for item in os.environ.get("OLLAMA_MODEL_CANDIDATES", "").split(",")
-    if item.strip()
-]
-OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "45"))
-OLLAMA_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS", "20"))
+# Gemini Vision API Configuration for advanced schedule extraction
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GEMINI_ESCALATION_CONFIDENCE_THRESHOLD = float(os.environ.get("GEMINI_ESCALATION_CONFIDENCE_THRESHOLD", "0.62"))
+GEMINI_ESCALATION_MIN_BLOCKS = int(os.environ.get("GEMINI_ESCALATION_MIN_BLOCKS", "4"))
 
 SCHEDULE_LAYOUT_PIPELINE_MODE = os.environ.get("SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled").strip().lower()
 if SCHEDULE_LAYOUT_PIPELINE_MODE not in {"disabled", "shadow", "active"}:

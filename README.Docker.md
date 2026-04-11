@@ -40,12 +40,11 @@ Frontend dependencies or frontend Dockerfile:
 - Use: `docker compose build vite && docker compose up -d vite`
 - For OCR packages specifically: `docker compose exec vite npm install tesseract.js pdfjs-dist`
 
-Ollama local parser:
-- Use: `docker compose up -d` (bootstrap runs automatically as part of startup).
-- The bootstrap container reads `OLLAMA_MODEL` and `OLLAMA_MODEL_CANDIDATES` from `.env` and pulls missing models before backend start.
-- Manual pull, if you need it: `docker compose exec -T ollama ollama pull <your-model-name>`
-- Verify Ollama: `docker compose exec ollama ollama list`
-- Backend uses the in-network URL `http://ollama:11434/v1`
+Schedule parser (Hybrid + Gemini):
+- Hybrid OCR runs locally by default and does not require an API key.
+- For harder schedules, backend can auto-escalate to Gemini when confidence is low.
+- Configure in `.env`: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_ESCALATION_CONFIDENCE_THRESHOLD`.
+- After changing parser env values: `docker compose up -d --build web`.
 
 Django models:
 - Use:

@@ -3,6 +3,20 @@
 from django.db import migrations
 
 
+def _rename_tables_forward(apps, schema_editor):
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+
+    if "app_assignment" in existing_tables and "app_task" not in existing_tables:
+        schema_editor.execute("ALTER TABLE app_assignment RENAME TO app_task;")
+
+
+def _rename_tables_backward(apps, schema_editor):
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+
+    if "app_task" in existing_tables and "app_assignment" not in existing_tables:
+        schema_editor.execute("ALTER TABLE app_task RENAME TO app_assignment;")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,12 +24,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterModelTable(
-            name='assignment',
-            table='app_task',
-        ),
-        migrations.AlterModelTable(
-            name='taskblock',
-            table='app_taskblock',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(
+                    _rename_tables_forward,
+                    _rename_tables_backward,
+                )
+            ],
+            state_operations=[
+                migrations.AlterModelTable(
+                    name='assignment',
+                    table='app_task',
+                ),
+                migrations.AlterModelTable(
+                    name='taskblock',
+                    table='app_taskblock',
+                ),
+            ],
         ),
     ]

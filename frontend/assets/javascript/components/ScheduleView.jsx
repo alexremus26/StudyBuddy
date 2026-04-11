@@ -1,4 +1,11 @@
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const CLASS_TYPE_LABELS = {
+  course: 'Course',
+  seminar: 'Seminar',
+  lab: 'Lab',
+  workshop: 'Workshop',
+  tutorial: 'Tutorial',
+};
 
 function getSchoolDayFromDate(dateString) {
   const date = new Date(dateString);
@@ -48,11 +55,14 @@ export function ScheduleView({ schoolClasses, taskBlocks }) {
       return;
     }
 
+    const classTypeLabel = CLASS_TYPE_LABELS[String(schoolClass.class_type || '').toLowerCase()] || 'Course';
+
     eventsByDay[dayIndex].push({
       id: `school-${schoolClass.id}`,
       type: 'school',
       title: schoolClass.name,
-      details: schoolClass.location ? `Location: ${schoolClass.location}` : 'School class',
+      classTypeLabel,
+      location: schoolClass.location || '',
       timeLabel: `${schoolClass.start_time.slice(0, 5)} - ${schoolClass.end_time.slice(0, 5)}`,
       sortMinutes: toMinutesFromTimeString(schoolClass.start_time),
     });
@@ -113,8 +123,15 @@ export function ScheduleView({ schoolClasses, taskBlocks }) {
                     }`}
                   >
                     <p className="font-semibold">{event.title}</p>
+                    {event.type === 'school' ? (
+                      <p className="mt-1 text-muted-foreground">{event.classTypeLabel}</p>
+                    ) : null}
                     <p className="mt-1 text-muted-foreground">{event.timeLabel}</p>
-                    <p className="mt-1 text-muted-foreground">{event.details}</p>
+                    {event.type === 'school' ? (
+                      event.location ? <p className="mt-1 text-muted-foreground">Location: {event.location}</p> : null
+                    ) : (
+                      <p className="mt-1 text-muted-foreground">{event.details}</p>
+                    )}
                   </article>
                 ))
               )}

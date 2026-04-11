@@ -10,11 +10,6 @@ MAX_BULK_TASKS : int = 100
 class ScheduleParseRequestSerializer(serializers.Serializer):
     ocr_text = serializers.CharField(allow_blank=False, trim_whitespace=True)
     max_blocks = serializers.IntegerField(required=False, min_value=1, max_value=100, default=25)
-    parser_mode = serializers.ChoiceField(
-        choices=["auto", "ollama", "regex", "layout_hybrid"],
-        required=False,
-        default="auto",
-    )
 
 
 class ScheduleParseBlockSerializer(serializers.Serializer):

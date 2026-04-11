@@ -322,7 +322,7 @@ class ScheduleApiTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(TaskBlock.objects.filter(user=self.user_one).count(), 2)
 
-	@patch("schedule.views.OllamaScheduleParser.parse")
+	@patch("schedule.views.ScheduleParser.parse")
 	@override_settings(SCHEDULE_LAYOUT_PIPELINE_MODE="shadow")
 	def test_parse_schedule_text_includes_diagnostics_and_shadow_warning(self, mock_parse):
 		self.client.force_authenticate(user=self.user_one)
@@ -336,13 +336,13 @@ class ScheduleApiTests(APITestCase):
 				}
 			],
 			"warnings": [],
-			"source": "ollama",
-			"model_output": "{}",
+			"source": "layout_hybrid",
+			"model_output": "",
+			"diagnostics": {},
 		}
 
 		payload = {
 			"ocr_text": "Monday 09:00-10:00 Math",
-			"parser_mode": "auto",
 		}
 		response = self.client.post(reverse("schedule-parse-text"), payload, format="json")
 
@@ -360,27 +360,25 @@ class ScheduleApiTests(APITestCase):
 		kwargs = mock_parse.call_args.kwargs
 		self.assertEqual(kwargs.get("layout_pipeline_mode"), "shadow")
 
-	@patch("schedule.views.OllamaScheduleParser.parse")
-	def test_parse_schedule_text_accepts_layout_hybrid_mode(self, mock_parse):
+	@patch("schedule.views.ScheduleParser.parse")
+	def test_parse_schedule_text_returns_blocks(self, mock_parse):
 		self.client.force_authenticate(user=self.user_one)
 		mock_parse.return_value = {
 			"blocks": [],
-			"warnings": ["Layout-hybrid parser mode is not implemented yet; falling back to auto mode."],
-			"source": "ollama",
+			"warnings": [],
+			"source": "layout_hybrid",
 			"model_output": "",
 			"diagnostics": {
-				"requested_parser_mode": "layout_hybrid",
-				"effective_parser_mode": "auto",
+				"extraction_method": "layout_hybrid",
 			},
 		}
 
 		payload = {
 			"ocr_text": "Luni 08:00-10:00 Programare",
-			"parser_mode": "layout_hybrid",
 		}
 		response = self.client.post(reverse("schedule-parse-text"), payload, format="json")
 
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		mock_parse.assert_called_once()
 		kwargs = mock_parse.call_args.kwargs
-		self.assertEqual(kwargs.get("parser_mode"), "layout_hybrid")
+		self.assertNotIn("parser_mode", kwargs)

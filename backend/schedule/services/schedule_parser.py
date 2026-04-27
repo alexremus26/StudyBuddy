@@ -165,6 +165,55 @@ def _clean_title_for_layout(line):
     return cleaned.strip() or "Imported schedule block"
 
 
+def _compute_block_confidence(block):
+    """Compute a heuristic confidence (0.0-1.0) for a parsed block.
+
+    Factors considered:
+    - time completeness (start+end > start only > none)
+    - day plausibility (weekdays favored, weekends penalized)
+    - title presence/length
+    - extraction method (table results slightly penalized)
+    - extra penalty when start exists but end is missing and title looks like a subject
+    """
+    day = block.get("day_of_week")
+    start = block.get("start_time")
+    end = block.get("end_time")
+    title = str(block.get("title", "") or "").strip()
+    method = str(block.get("extraction_method", "")).lower()
+
+    # Time score: full interval > start only > none
+    if start and end:
+        time_score = 1.0
+    elif start and not end:
+        time_score = 0.5
+    else:
+        time_score = 0.0
+
+    # Day score: penalize weekends (Saturday=5, Sunday=6)
+    if isinstance(day, int):
+        day_score = 0.0 if day in (5, 6) else 1.0
+    else:
+        day_score = 0.5
+
+    # Title score: presence of letters and reasonable length
+    title_has_letters = bool(re.search(r"[A-Za-z\u00C0-\u017F]", title))
+    title_len = len(title)
+    title_score = (min(title_len, 20) / 20.0) if title_has_letters else 0.0
+
+    # Weighted combination
+    raw_score = 0.6 * time_score + 0.25 * day_score + 0.15 * title_score
+
+    # Slight penalty for table-based extraction which is more error-prone here
+    if "table" in method:
+        raw_score *= 0.9
+
+    # Extra penalty when start exists but end missing and title looks like a subject
+    if start and not end and title_has_letters:
+        raw_score *= 0.8
+
+    # Clamp and return rounded
+    return round(max(0.0, min(1.0, raw_score)), 4)
+
 def _extract_blocks_from_layout_hybrid_ocr(text):
     """
     Extract schedule blocks using hybrid layout analysis.
@@ -216,11 +265,12 @@ def _extract_blocks_from_layout_hybrid_ocr(text):
                     "start_time": start,
                     "end_time": end,
                     "title": title,
-                    "confidence": 0.62,
                     "raw_text": normalized,
                     "extraction_method": "layout_hybrid_interval_line",
                 }
             )
+            # compute and attach heuristic confidence
+            blocks[-1]["confidence"] = _compute_block_confidence(blocks[-1])
             matched_direct = True
             break
 
@@ -249,11 +299,12 @@ def _extract_blocks_from_layout_hybrid_ocr(text):
                 "start_time": start,
                 "end_time": end,
                 "title": _clean_title_for_layout(normalized),
-                "confidence": 0.57,
                 "raw_text": normalized,
                 "extraction_method": "layout_hybrid_table",
             }
         )
+        # compute and attach heuristic confidence for table blocks
+        blocks[-1]["confidence"] = _compute_block_confidence(blocks[-1])
 
     deduped = []
     seen = set()
@@ -479,10 +530,11 @@ class ScheduleParser:
                     "start_time": start,
                     "end_time": end,
                     "title": title,
-                    "confidence": 0.75,
                     "raw_text": "",
                     "extraction_method": "gemini_vision",
                 })
+                # compute confidence for Gemini blocks and ensure a reasonable baseline
+                blocks[-1]["confidence"] = max(_compute_block_confidence(blocks[-1]), 0.75)
             
             # Include Gemini's own warnings
             gemini_warnings = payload.get("warnings", [])

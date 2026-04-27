@@ -8,6 +8,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 FROM python:3.13-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gdal-bin \
+        libgdal-dev \
+        libgeos-dev \
+        libproj-dev \
+        proj-bin && \
+    rm -rf /var/lib/apt/lists/*
  
 RUN useradd -m -r appuser && \
     mkdir -p /app/staticfiles && \

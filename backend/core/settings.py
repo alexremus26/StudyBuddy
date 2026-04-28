@@ -193,7 +193,8 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TASK_ROUTES = {
-    'coffeeshops.tasks.*': {'queue': 'coffeeshops'},
+    'coffeeshops.tasks.process_location_profile_task': {'queue': 'coffeeshops'},
+    'coffeeshops.tasks.generate_ai_profile_task': {'queue': 'gemini'},
 }
 
 SPECTACULAR_SETTINGS = {

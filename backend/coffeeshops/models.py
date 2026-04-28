@@ -60,41 +60,46 @@ class AIAggregateProfile(models.Model):
 
 	class Meta:
 		db_table = "app_aiaggregateprofile"
-
+	
 	def update_overall_rating(self):
-		total = (
+		self.overall_rating = (
 			self.laptop_friendly
 			+ self.study_friendly
 			+ self.overall_corwdness
 			+ self.noise_level
-			+ self.overall_rating
-		)
-		self.overall_rating = total / 5
-		self.save()
+		) / 4
+		self.save(update_fields=["overall_rating"])
+		return self.overall_rating
 
 	def apply_profile(
 		self,
 		ai_description: str,
-		laptop_friendly: int,
-		study_friendly: int,
-		crowdness: int,
-		noise_level: int,
+		laptop_friendly: float,
+		study_friendly: float,
+		overall_crowdness: float,
+		noise_level: float,
+		overall_rating: float,
 	) -> bool:
-		self.AIdescription = ai_description
+		ratings = {
+			"laptop_friendly": laptop_friendly,
+			"study_friendly": study_friendly,
+			"overall_corwdness": overall_crowdness,
+			"noise_level": noise_level,
+			"overall_rating": overall_rating,
+		}
 
-		for rating, name in [
-			(laptop_friendly, "Laptop Friendly"),
-			(study_friendly, "Study Friendly"),
-			(crowdness, "Overall Crowdness"),
-			(noise_level, "Noise Level"),
-		]:
-			if 0 <= rating <= 5:
-				setattr(self, name.lower().replace(" ", "_"), rating)
-			else:
-				print(f"Invalid rating for {name}: {rating}. Must be between 0 and 5.")
+		for field_name, rating in ratings.items():
+			if not 0 <= float(rating) <= 5:
+				print(f"Invalid rating for {field_name}: {rating}. Must be between 0 and 5.")
 				return False
 
-		self.update_overall_rating()
+		self.AIdescription = ai_description
+		self.laptop_friendly = float(laptop_friendly)
+		self.study_friendly = float(study_friendly)
+		self.overall_corwdness = float(overall_crowdness)
+		self.noise_level = float(noise_level)
+		self.overall_rating = float(overall_rating)
+		self.save()
 		return True
 
 	def __str__(self):

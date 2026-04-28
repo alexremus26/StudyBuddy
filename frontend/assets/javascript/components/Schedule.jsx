@@ -4,6 +4,7 @@ import {
   createAssignment,
   updateAssignment,
   deleteAssignment,
+  deleteAllAssignments,
   listSchoolClasses,
   createSchoolClass,
   updateSchoolClass,
@@ -12,7 +13,9 @@ import {
   listTaskBlocks,
   createTaskBlock,
   deleteTaskBlock,
+  deleteAllTaskBlocks,
   parseScheduleText,
+  listPlanDrafts,
 } from '../api/client';
 import { TaskForm } from './TaskForm';
 import { ScheduleView } from './ScheduleView';
@@ -53,6 +56,7 @@ const emptyClassForm = {
   start_time: '',
   end_time: '',
   location: '',
+  lecturer_name: '',
 };
 
 const emptyTaskBlockForm = {
@@ -406,6 +410,25 @@ function parseImportedSchoolClass(block) {
     ? (IMPORT_CLASS_TYPE_ALIASES[typeMatch[1].trim().toLowerCase()] || 'course')
     : 'course';
 
+  const pipeParts = titleWithoutType
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (pipeParts.length >= 2) {
+    const [subject, instructor, locationCandidate] = pipeParts;
+    const normalizedInstructor = String(instructor || '')
+      .replace(/\s*\/\s*/g, ', ')
+      .replace(/\s+,\s+/g, ', ')
+      .trim();
+    return {
+      name: subject || rawTitle || 'Imported class',
+      class_type: classType,
+      lecturer_name: normalizedInstructor,
+      location: locationCandidate || '',
+    };
+  }
+
   const titleTokens = titleWithoutType.split(' ').filter(Boolean);
   let location = '';
   if (titleTokens.length > 1) {
@@ -422,6 +445,7 @@ function parseImportedSchoolClass(block) {
     name,
     class_type: classType,
     location,
+    lecturer_name: '',
   };
 }
 
@@ -563,6 +587,8 @@ export function Schedule() {
   const [classFormLoading, setClassFormLoading] = useState(false);
   const [classEditLoading, setClassEditLoading] = useState(false);
   const [taskBlockFormLoading, setTaskBlockFormLoading] = useState(false);
+  const [showClassForm, setShowClassForm] = useState(false);
+  const [showTaskBlockForm, setShowTaskBlockForm] = useState(false);
   const [isOcrImporting, setIsOcrImporting] = useState(false);
   const [lastImportMeta, setLastImportMeta] = useState(null);
   const scheduleFileInputRef = useRef(null);
@@ -571,14 +597,31 @@ export function Schedule() {
     try {
       setLoading(true);
       setError(null);
-      const [assignmentsData, schoolClassesData, taskBlocksData] = await Promise.all([
-        listAssignments(),
-        listSchoolClasses(),
-        listTaskBlocks(),
-      ]);
+      const assignmentsData = await listAssignments();
+      const schoolClassesData = await listSchoolClasses();
+      const taskBlocksData = await listTaskBlocks();
+      const draftsData = await listPlanDrafts();
+      
       setAssignments(Array.isArray(assignmentsData) ? assignmentsData : []);
       setSchoolClasses(Array.isArray(schoolClassesData) ? schoolClassesData : []);
-      setTaskBlocks(Array.isArray(taskBlocksData) ? taskBlocksData : []);
+      
+      const combinedBlocks = [...(Array.isArray(taskBlocksData) ? taskBlocksData : [])];
+      
+      // Inject drafts into the view so user can see them before approving
+      if (Array.isArray(draftsData)) {
+        draftsData.forEach(plan => {
+          if (plan.status === 'draft') {
+            plan.draft_blocks?.forEach(db => {
+              combinedBlocks.push({
+                ...db,
+                id: `draft-${db.id}`, // prefix to distinguish from real blocks
+              });
+            });
+          }
+        });
+      }
+
+      setTaskBlocks(combinedBlocks);
     } catch (err) {
       setError(err.message || 'Failed to load schedule data');
       setAssignments([]);
@@ -646,6 +689,7 @@ export function Schedule() {
         start_time: classForm.start_time.trim(),
         end_time: classForm.end_time.trim(),
         location: classForm.location.trim(),
+        lecturer_name: classForm.lecturer_name.trim(),
       });
       setClassForm(emptyClassForm);
       fetchScheduleData();
@@ -692,6 +736,7 @@ export function Schedule() {
       start_time: (schoolClass.start_time || '').slice(0, 5),
       end_time: (schoolClass.end_time || '').slice(0, 5),
       location: schoolClass.location || '',
+      lecturer_name: schoolClass.lecturer_name || '',
     });
   };
 
@@ -721,6 +766,7 @@ export function Schedule() {
         start_time: editingClassForm.start_time.trim(),
         end_time: editingClassForm.end_time.trim(),
         location: editingClassForm.location.trim(),
+        lecturer_name: editingClassForm.lecturer_name.trim(),
       });
       handleCancelEditSchoolClass();
       fetchScheduleData();
@@ -780,6 +826,40 @@ export function Schedule() {
       fetchScheduleData();
     } catch (err) {
       setError(err.message || 'Failed to delete task block');
+    }
+  };
+
+  const handleDeleteAllTaskBlocks = async () => {
+    if (!confirm('Delete ALL manual task blocks? This cannot be undone.')) return;
+
+    try {
+      setError(null);
+      await deleteAllTaskBlocks();
+      fetchScheduleData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete all task blocks');
+    }
+  };
+
+  const handleToggleAssignmentCompletion = async (assignmentId, currentStatus) => {
+    try {
+      setError(null);
+      await updateAssignment(assignmentId, { is_completed: !currentStatus });
+      fetchScheduleData();
+    } catch (err) {
+      setError(err.message || 'Failed to update assignment');
+    }
+  };
+
+  const handleDeleteAllAssignments = async () => {
+    if (!confirm('Delete ALL assignments? This cannot be undone.')) return;
+
+    try {
+      setError(null);
+      await deleteAllAssignments();
+      fetchScheduleData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete all assignments');
     }
   };
 
@@ -894,6 +974,7 @@ export function Schedule() {
             start_time: draftSchoolClass.start_time,
             end_time: draftSchoolClass.end_time,
             location: importedSchoolClass.location.slice(0, 255),
+            lecturer_name: importedSchoolClass.lecturer_name.slice(0, 255),
           });
           seenImportKeys.add(importKey);
           importedCount += 1;
@@ -943,6 +1024,12 @@ export function Schedule() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href="/planner"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Go to AI Planner
+          </a>
           <button
             onClick={() => handleAddScheduleClick()}
             disabled={isOcrImporting}
@@ -1013,333 +1100,172 @@ export function Schedule() {
         </div>
       ) : (
         <>
-          <ScheduleView schoolClasses={schoolClasses} taskBlocks={taskBlocks} />
+          <ScheduleView
+            schoolClasses={schoolClasses}
+            taskBlocks={taskBlocks}
+            onDeleteSchoolClass={handleDeleteSchoolClass}
+            onDeleteTaskBlock={handleDeleteTaskBlock}
+          />
 
           <section className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border bg-card/60 p-4 md:p-6">
-              <h2 className="text-xl font-semibold">School Classes</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Add weekly fixed slots that represent your school timetable.
-              </p>
-              <button
-                type="button"
-                onClick={handleDeleteAllSchoolClasses}
-                disabled={schoolClasses.length === 0}
-                className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Delete All School Classes
-              </button>
-
-              <form className="mt-4 space-y-3" onSubmit={handleCreateSchoolClass}>
-                <input
-                  type="text"
-                  placeholder="Class name (e.g., OOP)"
-                  value={classForm.name}
-                  onChange={(event) => setClassForm((prev) => ({ ...prev, name: event.target.value }))}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2"
-                />
-
-                <select
-                  value={classForm.class_type}
-                  onChange={(event) => setClassForm((prev) => ({ ...prev, class_type: event.target.value }))}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2"
-                >
-                  {CLASS_TYPES.map((classType) => (
-                    <option key={classType.value} value={classType.value}>{classType.label}</option>
-                  ))}
-                </select>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <select
-                    value={classForm.day_of_week}
-                    onChange={(event) => setClassForm((prev) => ({ ...prev, day_of_week: event.target.value }))}
-                    className="rounded-lg border border-input bg-background px-3 py-2"
-                  >
-                    {DAYS.map((day) => (
-                      <option key={day.value} value={day.value}>{day.label}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="HH:mm"
-                    value={classForm.start_time}
-                    onChange={(event) => setClassForm((prev) => ({ ...prev, start_time: event.target.value.trim() }))}
-                    className="rounded-lg border border-input bg-background px-3 py-2"
-                  />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="HH:mm"
-                    value={classForm.end_time}
-                    onChange={(event) => setClassForm((prev) => ({ ...prev, end_time: event.target.value.trim() }))}
-                    className="rounded-lg border border-input bg-background px-3 py-2"
-                  />
+            <div className="rounded-xl border bg-card/60 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-base font-bold">School Classes</h2>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Weekly timetable</p>
                 </div>
-                <p className="text-xs text-muted-foreground">Use 24h format, for example 16:00.</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowClassForm(!showClassForm)}
+                    className="text-[10px] font-bold uppercase tracking-wider bg-indigo-600/10 text-indigo-600 px-2 py-1 rounded border border-indigo-600/20 hover:bg-indigo-600/20 transition-colors"
+                  >
+                    {showClassForm ? 'Close' : 'Add Class'}
+                  </button>
+                  <button
+                    onClick={handleDeleteAllSchoolClasses}
+                    disabled={schoolClasses.length === 0}
+                    className="text-[10px] font-bold uppercase tracking-wider text-destructive/60 hover:text-destructive disabled:opacity-30"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
 
-                <input
-                  type="text"
-                  placeholder="Location (optional)"
-                  value={classForm.location}
-                  onChange={(event) => setClassForm((prev) => ({ ...prev, location: event.target.value }))}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2"
-                />
+              {showClassForm && (
+                <form className="mb-4 space-y-2 p-3 rounded-lg bg-muted/30 border border-border/50 animate-in fade-in slide-in-from-top-1" onSubmit={handleCreateSchoolClass}>
+                  <input
+                    type="text"
+                    placeholder="Class name"
+                    value={classForm.name}
+                    onChange={(event) => setClassForm((prev) => ({ ...prev, name: event.target.value }))}
+                    className="w-full rounded border border-input bg-background px-2 py-1.5 text-xs"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={classForm.class_type}
+                      onChange={(event) => setClassForm((prev) => ({ ...prev, class_type: event.target.value }))}
+                      className="rounded border border-input bg-background px-2 py-1.5 text-xs"
+                    >
+                      {CLASS_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    <select
+                      value={classForm.day_of_week}
+                      onChange={(event) => setClassForm((prev) => ({ ...prev, day_of_week: event.target.value }))}
+                      className="rounded border border-input bg-background px-2 py-1.5 text-xs"
+                    >
+                      {DAYS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Start HH:mm"
+                      value={classForm.start_time}
+                      onChange={(event) => setClassForm((prev) => ({ ...prev, start_time: event.target.value.trim() }))}
+                      className="rounded border border-input bg-background px-2 py-1.5 text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="End HH:mm"
+                      value={classForm.end_time}
+                      onChange={(event) => setClassForm((prev) => ({ ...prev, end_time: event.target.value.trim() }))}
+                      className="rounded border border-input bg-background px-2 py-1.5 text-xs"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={classFormLoading}
+                    className="w-full rounded bg-indigo-600 px-3 py-1.5 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                  >
+                    {classFormLoading ? 'Saving...' : 'Add School Class'}
+                  </button>
+                </form>
+              )}
 
-                <button
-                  type="submit"
-                  disabled={classFormLoading}
-                  className="w-full rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:opacity-90 disabled:opacity-60"
-                >
-                  {classFormLoading ? 'Adding class...' : 'Add School Class'}
-                </button>
-              </form>
-
-              <div className="mt-4 space-y-2">
+              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                 {schoolClasses.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No classes yet.</p>
+                  <p className="text-[10px] text-muted-foreground text-center py-4 italic">No classes yet.</p>
                 ) : (
-                  schoolClasses.map((schoolClass) => (
-                    <div key={schoolClass.id} className="rounded-lg border bg-background p-3">
-                      {editingSchoolClassId === schoolClass.id ? (
-                        <div className="space-y-3">
-                          <input
-                            type="text"
-                            value={editingClassForm.name}
-                            onChange={(event) => setEditingClassForm((prev) => ({ ...prev, name: event.target.value }))}
-                            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                            placeholder="Class name"
-                          />
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <select
-                              value={editingClassForm.class_type}
-                              onChange={(event) => setEditingClassForm((prev) => ({ ...prev, class_type: event.target.value }))}
-                              className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                            >
-                              {CLASS_TYPES.map((classType) => (
-                                <option key={classType.value} value={classType.value}>{classType.label}</option>
-                              ))}
-                            </select>
-                            <select
-                              value={editingClassForm.day_of_week}
-                              onChange={(event) => setEditingClassForm((prev) => ({ ...prev, day_of_week: event.target.value }))}
-                              className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                            >
-                              {DAYS.map((day) => (
-                                <option key={day.value} value={day.value}>{day.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={editingClassForm.start_time}
-                              onChange={(event) => setEditingClassForm((prev) => ({ ...prev, start_time: event.target.value.trim() }))}
-                              className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                              placeholder="HH:mm"
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={editingClassForm.end_time}
-                              onChange={(event) => setEditingClassForm((prev) => ({ ...prev, end_time: event.target.value.trim() }))}
-                              className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                              placeholder="HH:mm"
-                            />
-                          </div>
-                          <input
-                            type="text"
-                            value={editingClassForm.location}
-                            onChange={(event) => setEditingClassForm((prev) => ({ ...prev, location: event.target.value }))}
-                            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                            placeholder="Location (optional)"
-                          />
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSaveSchoolClassEdit(schoolClass.id)}
-                              disabled={classEditLoading}
-                              className="rounded bg-primary px-3 py-1 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-60"
-                            >
-                              {classEditLoading ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleCancelEditSchoolClass}
-                              disabled={classEditLoading}
-                              className="rounded border border-input px-3 py-1 text-xs hover:bg-secondary disabled:opacity-60"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="font-medium">{schoolClass.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {DAYS[schoolClass.day_of_week]?.label} {schoolClass.start_time.slice(0, 5)}-{schoolClass.end_time.slice(0, 5)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {CLASS_TYPES.find((classType) => classType.value === schoolClass.class_type)?.label || 'Course'}
-                            </p>
-                            {schoolClass.location ? (
-                              <p className="text-xs text-muted-foreground">{schoolClass.location}</p>
-                            ) : null}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditSchoolClass(schoolClass)}
-                              className="rounded bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-80"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteSchoolClass(schoolClass.id)}
-                              className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive hover:bg-destructive/20"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-xl border bg-card/60 p-4 md:p-6">
-              <h2 className="text-xl font-semibold">Manual Task Blocks</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Temporary scheduler for testing - TO BE IMPLEMENTED
-              </p>
-
-              <form className="mt-4 space-y-3" onSubmit={handleCreateTaskBlock}>
-                <select
-                  value={taskBlockForm.assignment_id}
-                  onChange={(event) => setTaskBlockForm((prev) => ({ ...prev, assignment_id: event.target.value }))}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2"
-                >
-                  <option value="">Select assignment</option>
-                  {assignments.map((assignment) => (
-                    <option key={assignment.id} value={assignment.id}>{assignment.title}</option>
-                  ))}
-                </select>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <input
-                    type="datetime-local"
-                    lang="en-GB"
-                    step="60"
-                    value={taskBlockForm.start_time}
-                    onChange={(event) => setTaskBlockForm((prev) => ({ ...prev, start_time: event.target.value }))}
-                    className="rounded-lg border border-input bg-background px-3 py-2"
-                  />
-                  <input
-                    type="datetime-local"
-                    lang="en-GB"
-                    step="60"
-                    value={taskBlockForm.end_time}
-                    onChange={(event) => setTaskBlockForm((prev) => ({ ...prev, end_time: event.target.value }))}
-                    className="rounded-lg border border-input bg-background px-3 py-2"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={taskBlockFormLoading}
-                  className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white hover:opacity-90 disabled:opacity-60"
-                >
-                  {taskBlockFormLoading ? 'Adding block...' : 'Add Task Block'}
-                </button>
-              </form>
-
-              <div className="mt-4 space-y-2">
-                {taskBlocks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No task blocks yet.</p>
-                ) : (
-                  taskBlocks.map((taskBlock) => (
-                    <div key={taskBlock.id} className="rounded-lg border bg-background p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{taskBlock.assignment?.title || 'Assignment block'}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDateTime24(taskBlock.start_time)} - {formatDateTime24(taskBlock.end_time)}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTaskBlock(taskBlock.id)}
-                          className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive hover:bg-destructive/20"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-xl border bg-card/60 p-4 md:p-6">
-            <h2 className="text-xl font-semibold">Assignments</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Homework and deliverables the planner should schedule around your classes.
-            </p>
-
-            <div className="mt-4 space-y-3">
-              {assignments.length === 0 ? (
-                <div className="rounded-lg border border-dashed bg-card p-8 text-center">
-                  <p className="text-muted-foreground">No assignments yet. Create one to get started.</p>
-                </div>
-              ) : (
-                assignments.map((task) => (
-                  <div
-                    key={task.id}
-                    className="rounded-lg border bg-card p-4 shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg">{task.title}</h3>
-                        {task.description ? (
-                          <p className="text-muted-foreground text-sm mt-1">{task.description}</p>
-                        ) : null}
-                        <div className="flex gap-4 mt-3 text-sm text-muted-foreground">
-                          {task.estimated_duration_minutes ? (
-                            <span>{task.estimated_duration_minutes} min</span>
-                          ) : null}
-                          {task.due_date ? (
-                            <span>{new Date(task.due_date).toLocaleDateString()}</span>
-                          ) : null}
-                          <span className={`font-medium ${task.is_completed ? 'text-green-600' : 'text-amber-600'}`}>
-                            {task.is_completed ? 'Completed' : 'Pending'}
+                  schoolClasses.map((sc) => (
+                    <div key={sc.id} className="group relative rounded border border-border/30 bg-background/30 px-2 py-1.5 hover:bg-muted/30 transition-all" title={`${sc.location ? `Location: ${sc.location}` : ''}${sc.lecturer_name ? `\nLecturer: ${sc.lecturer_name}` : ''}`.trim() || 'No additional details'}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-col overflow-hidden">
+                          <span className="text-xs font-bold truncate">{sc.name}</span>
+                          <span className="text-[10px] text-muted-foreground truncate">
+                            {DAYS[sc.day_of_week]?.label.slice(0, 3)} • {sc.start_time.slice(0, 5)}-{sc.end_time.slice(0, 5)} • {sc.class_type}
                           </span>
                         </div>
-                      </div>
-
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => handleOpenForm(task)}
-                          className="px-3 py-1 text-sm bg-secondary text-secondary-foreground rounded hover:opacity-80 transition-opacity"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTask(task.id)}
-                          className="px-3 py-1 text-sm bg-destructive/10 text-destructive rounded hover:bg-destructive/20 transition-colors"
-                        >
-                          Delete
-                        </button>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button onClick={() => handleDeleteSchoolClass(sc.id)} className="text-muted-foreground hover:text-destructive">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card/60 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-base font-bold">Assignments</h2>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Deadlines & Deliverables</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleOpenForm()}
+                    className="text-[10px] font-bold uppercase tracking-wider bg-indigo-600/10 text-indigo-600 px-2 py-1 rounded border border-indigo-600/20 hover:bg-indigo-600/20 transition-colors"
+                  >
+                    Add Assignment
+                  </button>
+                  <button
+                    onClick={handleDeleteAllAssignments}
+                    disabled={assignments.length === 0}
+                    className="text-[10px] font-bold uppercase tracking-wider text-destructive/60 hover:text-destructive disabled:opacity-30"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                {assignments.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-4 italic">No assignments yet.</p>
+                ) : (
+                  assignments.map((a) => (
+                    <div key={a.id} className={`group relative rounded border px-2 py-1.5 transition-all ${a.is_completed ? 'bg-green-500/5 border-green-500/20 opacity-70' : 'border-border/30 bg-background/30 hover:bg-muted/30'}`} title={a.description || 'No description provided'}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 overflow-hidden flex-1">
+                          <input
+                            type="checkbox"
+                            checked={a.is_completed}
+                            onChange={() => handleToggleAssignmentCompletion(a.id, a.is_completed)}
+                            className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 shrink-0"
+                          />
+                          <div className="flex flex-col overflow-hidden">
+                            <p className={`text-xs truncate ${a.is_completed ? 'line-through text-muted-foreground' : 'font-bold'}`}>
+                              {a.title}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              Due: {a.due_date ? new Date(a.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : 'No date'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button onClick={() => handleOpenForm(a)} className="text-muted-foreground hover:text-indigo-600">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                          </button>
+                          <button onClick={() => handleDeleteTask(a.id)} className="text-muted-foreground hover:text-destructive">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </section>
         </>

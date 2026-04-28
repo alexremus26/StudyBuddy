@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from app.models import Assignment, TaskBlock
+from schedule.services.schedule_parser import ScheduleParser
 
 
 class ScheduleApiTests(APITestCase):
@@ -59,7 +60,7 @@ class ScheduleApiTests(APITestCase):
 
 		# Create first block
 		payload1 = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": end.isoformat(),
 			"completed": False,
@@ -69,7 +70,7 @@ class ScheduleApiTests(APITestCase):
 
 		# Try to create overlapping block
 		payload2 = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": end.isoformat(),
 			"completed": False,
@@ -85,7 +86,7 @@ class ScheduleApiTests(APITestCase):
 
 		# Create: 10:00-11:00
 		payload1 = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"completed": False,
@@ -94,7 +95,7 @@ class ScheduleApiTests(APITestCase):
 
 		# Try to create: 10:30-11:30 (overlaps by 30 min)
 		payload2 = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": (start + timedelta(minutes=30)).isoformat(),
 			"end_time": (start + timedelta(hours=1, minutes=30)).isoformat(),
 			"completed": False,
@@ -109,7 +110,7 @@ class ScheduleApiTests(APITestCase):
 
 		# User 1 creates block
 		payload1 = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"completed": False,
@@ -120,7 +121,7 @@ class ScheduleApiTests(APITestCase):
 		# User 2 can create at same time
 		self.client.force_authenticate(user=self.user_two)
 		payload2 = {
-			"task_id": self.user_two_task.id,
+			"assignment_id": self.user_two_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"completed": False,
@@ -135,14 +136,14 @@ class ScheduleApiTests(APITestCase):
 
 		# Try to create block with user_two's task (malicious request)
 		payload = {
-			"task_id": self.user_two_task.id,
+			"assignment_id": self.user_two_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"completed": False,
 		}
 		response = self.client.post(reverse("task-block-list-create"), payload)
 		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-		self.assertIn("task_id", response.data)
+		self.assertIn("assignment_id", response.data)
 
 	def test_task_block_negative_duration_fails(self):
 		"""Reject negative actual_duration_minutes."""
@@ -150,7 +151,7 @@ class ScheduleApiTests(APITestCase):
 		start = timezone.now()
 
 		payload = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"actual_duration_minutes": -10,
@@ -166,7 +167,7 @@ class ScheduleApiTests(APITestCase):
 		start = timezone.now()
 
 		payload = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"actual_duration_minutes": 2000,  # > 24 hours
@@ -183,7 +184,7 @@ class ScheduleApiTests(APITestCase):
 		# Explicitly timezone-aware (with Z for UTC)
 		start = timezone.now()
 		payload = {
-			"task_id": self.user_one_task.id,
+			"assignment_id": self.user_one_task.id,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"completed": False,
@@ -200,7 +201,7 @@ class ScheduleApiTests(APITestCase):
 		start = timezone.now()
 
 		payload = {
-			"task_ids": [
+			"assignment_ids": [
 				self.user_one_task.id,
 				self.user_one_task.id,
 			],
@@ -226,7 +227,7 @@ class ScheduleApiTests(APITestCase):
 			task_ids.append(task.id)
 
 		payload = {
-			"task_ids": task_ids,
+			"assignment_ids": task_ids,
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=1)).isoformat(),
 			"completed": False,
@@ -247,7 +248,7 @@ class ScheduleApiTests(APITestCase):
 		)
 
 		payload = {
-			"task_ids": [self.user_one_task.id, task2.id, task3.id],
+			"assignment_ids": [self.user_one_task.id, task2.id, task3.id],
 			"start_time": start.isoformat(),
 			"end_time": (start + timedelta(hours=2)).isoformat(),
 			"completed": False,
@@ -285,7 +286,7 @@ class ScheduleApiTests(APITestCase):
 		start_time = timezone.now() + timedelta(hours=1)
 		end_time = start_time + timedelta(hours=1)
 		payload = {
-			"task_id": self.user_two_task.id,
+			"assignment_id": self.user_two_task.id,
 			"start_time": start_time.isoformat(),
 			"end_time": end_time.isoformat(),
 			"completed": False,
@@ -309,7 +310,7 @@ class ScheduleApiTests(APITestCase):
 		start_time = timezone.now() + timedelta(days=1)
 		end_time = start_time + timedelta(minutes=90)
 		payload = {
-			"task_ids": [self.user_one_task.id, second_task.id],
+			"assignment_ids": [self.user_one_task.id, second_task.id],
 			"start_time": start_time.isoformat(),
 			"end_time": end_time.isoformat(),
 			"completed": False,
@@ -382,3 +383,38 @@ class ScheduleApiTests(APITestCase):
 		mock_parse.assert_called_once()
 		kwargs = mock_parse.call_args.kwargs
 		self.assertNotIn("parser_mode", kwargs)
+
+	@override_settings(GEMINI_API_KEY="test", GEMINI_ESCALATION_CONFIDENCE_THRESHOLD=0.5)
+	@patch("schedule.services.schedule_parser.ScheduleParser._parse_with_gemini_vision")
+	def test_parse_table_heavy_escalates_to_gemini(self, mock_gemini):
+		raw = """Monday
+08:00 - 09:00
+Math
+Physics
+Chemistry
+Biology
+History
+Geography
+English
+"""
+		mock_gemini.return_value = (
+			[
+				{
+					"day_of_week": 0,
+					"start_time": "08:00",
+					"end_time": "09:00",
+					"title": "Math",
+				}
+			],
+			[],
+			"{}",
+			"",
+		)
+
+		parser = ScheduleParser()
+		result = parser.parse(raw, layout_pipeline_mode="shadow")
+
+		self.assertEqual(result["source"], "gemini_vision")
+		self.assertTrue(result["diagnostics"]["escalation_used"])
+		self.assertEqual(result["diagnostics"]["escalation_reason"], "table_heavy_layout")
+		mock_gemini.assert_called_once()

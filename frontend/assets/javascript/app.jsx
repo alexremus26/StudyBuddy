@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { Sidebar } from './components/Sidebar';
 import { IntroSection } from './components/AuthSection';
 import { Schedule } from './components/Schedule';
+import { Planner } from './components/Planner';
 import {
   getMe,
   loginUser,
@@ -91,7 +92,9 @@ function AppShell() {
     ? 'schedule'
     : currentPath === '/focus'
       ? 'focus'
-      : 'home';
+      : currentPath === '/planner'
+        ? 'planner'
+        : 'home';
 
   const navigateToTab = (tabId) => {
     if (tabId === 'schedule') {
@@ -101,6 +104,11 @@ function AppShell() {
 
     if (tabId === 'focus') {
       navigate('/focus');
+      return;
+    }
+
+    if (tabId === 'planner') {
+      navigate('/planner');
       return;
     }
 
@@ -237,6 +245,7 @@ function AppShell() {
               />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/focus" element={<FocusTab />} />
+              <Route path="/planner" element={<Planner />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
               <Route path="/register" element={<Navigate to="/" replace />} />
               <Route path="*" element={<Navigate to="/" replace />} />

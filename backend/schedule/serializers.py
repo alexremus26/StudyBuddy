@@ -112,6 +112,8 @@ class AssignmentSerializer(serializers.ModelSerializer):
             "estimated_duration_minutes",
             "is_completed",
             "due_date",
+            "category",
+            "priority",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -125,6 +127,8 @@ class AssignmentCreateSerializer(serializers.ModelSerializer):
             "description",
             "estimated_duration_minutes",
             "due_date",
+            "category",
+            "priority",
         ]
 
     def validate_due_date(self, value):
@@ -141,6 +145,8 @@ class AssignmentEditSerializer(serializers.ModelSerializer):
             "estimated_duration_minutes",
             "is_completed",
             "due_date",
+            "category",
+            "priority",
         ]
 
     def validate_due_date(self, value):
@@ -393,6 +399,7 @@ class SchoolClassSerializer(serializers.ModelSerializer):
             "start_time",
             "end_time",
             "location",
+            "lecturer_name",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -445,3 +452,17 @@ class SchoolClassSerializer(serializers.ModelSerializer):
 
         return attrs
 
+
+from .models import GeneratedPlan, DraftTaskBlock
+
+class DraftTaskBlockSerializer(serializers.ModelSerializer):
+    assignment = AssignmentSerializer(read_only=True)
+    class Meta:
+        model = DraftTaskBlock
+        fields = ["id", "assignment", "start_time", "end_time"]
+
+class GeneratedPlanSerializer(serializers.ModelSerializer):
+    draft_blocks = DraftTaskBlockSerializer(many=True, read_only=True)
+    class Meta:
+        model = GeneratedPlan
+        fields = ["id", "start_date", "end_date", "status", "created_at", "draft_blocks"]

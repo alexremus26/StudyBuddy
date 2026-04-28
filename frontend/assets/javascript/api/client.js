@@ -213,6 +213,23 @@ export async function deleteAssignment(assignmentId) {
   return deleteJson(`/api/schedule/assignments/${assignmentId}/`);
 }
 
+export async function deleteAllAssignments() {
+  const token = getAuthToken();
+  const response = await fetch('/api/schedule/assignments/delete-all/', {
+    method: 'DELETE',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(data ?? 'Request failed', response);
+  }
+  return data;
+}
+
 export async function listSchoolClasses() {
   const { data, error, response } = await apiClient.GET('/api/schedule/school-classes/');
   if (error) {
@@ -267,6 +284,43 @@ export async function deleteTaskBlock(taskBlockId) {
   return deleteJson(`/api/schedule/task-blocks/${taskBlockId}/`);
 }
 
+export async function deleteAllTaskBlocks() {
+  const token = getAuthToken();
+  const response = await fetch('/api/schedule/task-blocks/delete-all/', {
+    method: 'DELETE',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(data ?? 'Request failed', response);
+  }
+  return data;
+}
+
 export async function updateMyProfile(payload) {
   return putJson('/me/profile/', payload);
+}
+
+export async function generatePlan(payload) {
+  return postJson('/api/schedule/planner/generate/', payload);
+}
+
+export async function listPlanDrafts() {
+  const { data, error, response } = await apiClient.GET('/api/schedule/planner/drafts/');
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
+export async function approvePlan(planId) {
+  return postJson(`/api/schedule/planner/approve/${planId}/`, {});
+}
+
+export async function deletePlan(planId) {
+  return deleteJson(`/api/schedule/planner/delete/${planId}/`);
 }

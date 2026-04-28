@@ -48,6 +48,13 @@ def assignment_list_create(request):
 	return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def assignment_delete_all(request):
+	deleted_count, _ = Assignment.objects.filter(user=request.user).delete()
+	return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+
+
 @extend_schema(
 	methods=["GET"],
 	operation_id="assignments_retrieve",
@@ -124,6 +131,13 @@ def school_class_list_create(request):
 @permission_classes([permissions.IsAuthenticated])
 def school_class_delete_all(request):
 	deleted_count, _ = SchoolClass.objects.filter(user=request.user).delete()
+	return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+
+
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def task_block_delete_all(request):
+	deleted_count, _ = TaskBlock.objects.filter(user=request.user).delete()
 	return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
 
 
@@ -304,3 +318,101 @@ def parse_schedule_text(request):
 	response_serializer = ScheduleParseResponseSerializer(data=result)
 	response_serializer.is_valid(raise_exception=True)
 	return Response(response_serializer.validated_data, status=status.HTTP_200_OK)
+
+from schedule.models import GeneratedPlan, DraftTaskBlock
+from schedule.serializers import GeneratedPlanSerializer
+from schedule.services.planner import generate_plan_for_user
+import datetime
+from django.utils import timezone
+
+@extend_schema(
+    methods=["POST"],
+    operation_id="planner_generate",
+    responses={200: GeneratedPlanSerializer},
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def planner_generate(request):
+    start_date_str = request.data.get("start_date")
+    end_date_str = request.data.get("end_date")
+    
+    if not start_date_str or not end_date_str:
+        return Response({"error": "start_date and end_date are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
+    end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
+    
+    # Clear old drafts first so the user isn't confused by stale data
+    GeneratedPlan.objects.filter(user=request.user, status=GeneratedPlan.STATUS_DRAFT).delete()
+    
+    plan = generate_plan_for_user(request.user, start_date, end_date)
+    serializer = GeneratedPlanSerializer(plan, context={"request": request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@extend_schema(
+    methods=["GET"],
+    operation_id="planner_drafts",
+    responses={200: GeneratedPlanSerializer(many=True)},
+)
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def planner_draft_list(request):
+    plans = GeneratedPlan.objects.filter(user=request.user).order_by("-created_at")
+    serializer = GeneratedPlanSerializer(plans, many=True, context={"request": request})
+    return Response(serializer.data)
+
+@extend_schema(
+    methods=["POST"],
+    operation_id="planner_approve",
+    responses={200: OpenApiTypes.OBJECT},
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def planner_approve(request, pk):
+    try:
+        plan = GeneratedPlan.objects.get(pk=pk, user=request.user)
+    except GeneratedPlan.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+        
+    if plan.status == GeneratedPlan.STATUS_APPROVED:
+        return Response({"error": "Plan is already approved"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    for draft_block in plan.draft_blocks.all():
+        TaskBlock.objects.create(
+            user=request.user,
+            assignment=draft_block.assignment,
+            start_time=draft_block.start_time,
+            end_time=draft_block.end_time
+        )
+        
+    plan.status = GeneratedPlan.STATUS_APPROVED
+    plan.save()
+    
+    return Response({"message": "Plan approved and task blocks created."}, status=status.HTTP_200_OK)
+
+@extend_schema(
+    methods=["DELETE"],
+    operation_id="planner_delete",
+    responses={204: None},
+)
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def planner_delete(request, pk):
+    try:
+        plan = GeneratedPlan.objects.get(pk=pk, user=request.user)
+    except GeneratedPlan.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    
+    # If the plan was approved, its draft blocks were copied into real
+    # TaskBlocks.  Remove those TaskBlocks so the main schedule is clean.
+    if plan.status == GeneratedPlan.STATUS_APPROVED:
+        for db in plan.draft_blocks.all():
+            TaskBlock.objects.filter(
+                user=request.user,
+                assignment=db.assignment,
+                start_time=db.start_time,
+                end_time=db.end_time,
+            ).delete()
+        
+    plan.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

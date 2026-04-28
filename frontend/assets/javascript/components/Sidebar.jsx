@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home', onTabChange = () => {}, onLoginClick = () => {}, onRegisterClick = () => {}, onAvatarUpload = async () => {} }) {
+export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home', onTabChange = () => { }, onLoginClick = () => { }, onRegisterClick = () => { }, onAvatarUpload = async () => { } }) {
   const initial = profile?.username ? profile.username.charAt(0).toUpperCase() : '·';
   const fileInputRef = useRef(null);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -45,11 +45,10 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              currentTab === tab.id
+            className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors ${currentTab === tab.id
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-muted-foreground hover:bg-sidebar-accent'
-            }`}
+              }`}
           >
             {tab.label}
           </button>

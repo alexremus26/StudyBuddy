@@ -2,8 +2,12 @@ import json
 import re
 import logging
 
-import google.generativeai as genai
 from django.conf import settings
+
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +349,7 @@ class ScheduleParser:
             1,
         )
         
-        if self.gemini_api_key:
+        if self.gemini_api_key and genai is not None:
             genai.configure(api_key=self.gemini_api_key)
     
     def parse(self, raw_text, max_blocks=25, layout_pipeline_mode="disabled"):

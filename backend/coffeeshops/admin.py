@@ -5,7 +5,7 @@ from .models import AIAggregateProfile, Location, UserFavPlace, UserReview
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
-	list_display = ('name', 'address', 'has_wifi', 'has_outlets', 'is_quiet')
+	list_display = ('name', 'address', 'coordinates', 'status')
 	search_fields = ('name', 'address')
 
 

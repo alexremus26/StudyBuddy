@@ -1,10 +1,14 @@
-from django.db import migrations, models
+from django.contrib.gis.db import models as gis_models
+from django.db import migrations
 
 SQL_COPY = """
 UPDATE app_location
-SET temp_coordinates = jsonb_build_object(
-  'latitude', ST_Y(coordinates),
-  'longitude', ST_X(coordinates)
+SET temp_coordinates = ST_SetSRID(
+    ST_MakePoint(
+        (coordinates->>'longitude')::double precision,
+        (coordinates->>'latitude')::double precision
+    ),
+    4326
 )
 WHERE coordinates IS NOT NULL;
 """
@@ -19,7 +23,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='location',
             name='temp_coordinates',
-            field=models.JSONField(null=True, blank=True),
+            field=gis_models.PointField(null=True, blank=True, srid=4326),
         ),
         migrations.RunSQL(SQL_COPY, reverse_sql=migrations.RunSQL.noop),
         migrations.RemoveField(

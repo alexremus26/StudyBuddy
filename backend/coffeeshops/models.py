@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.contrib.gis.db import models as gis_models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 
@@ -15,7 +16,7 @@ class Location(models.Model):
 	google_place_id = models.CharField(max_length=255, unique=True, db_index=True)
 	name = models.CharField(max_length=100)
 	address = models.CharField(max_length=255, blank=True)
-	coordinates = models.JSONField(null=True, blank=True)
+	coordinates = gis_models.PointField(null=True, blank=True, srid=4326)
 	status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=Pending)
 
 	class Meta:
@@ -50,11 +51,11 @@ class UserReview(models.Model):
 class AIAggregateProfile(models.Model):
 	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="aggregate_profiles")
 	AIdescription = models.TextField(max_length=255, blank=True, null=True)
-	laptop_friendly = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
-	study_friendly = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
-	overall_corwdness = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
-	noise_level = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
-	overall_rating = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
+	laptop_friendly = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
+	study_friendly = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
+	overall_corwdness = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
+	noise_level = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
+	overall_rating = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
 	created_at = models.DateTimeField(auto_now_add=True)
 
 	class Meta:

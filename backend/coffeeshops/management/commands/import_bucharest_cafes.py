@@ -2,8 +2,10 @@ import json
 import os
 import time
 from urllib.request import Request, urlopen
+from coffeeshops.services.google_places import fetch_places_for_center
 from typing import List, Dict
 
+from django.contrib.gis.geos import Point
 from django.core.management.base import BaseCommand, CommandError
 from coffeeshops.models import Location
 
@@ -17,52 +19,6 @@ DEFAULT_CENTERS: List[Dict[str, float]] = [
     {"latitude": 44.4411, "longitude": 26.1363},
     {"latitude": 44.4609, "longitude": 26.0959},
 ]
-
-
-def post_json(url: str, api_key: str, payload: dict, field_mask: str) -> dict:
-    data = json.dumps(payload).encode("utf-8")
-    req = Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": api_key,
-            "X-Goog-FieldMask": field_mask,
-        },
-    )
-    with urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def fetch_places_for_center(api_key: str, lat: float, lng: float, radius_m: int) -> List[dict]:
-    body = {
-        "includedTypes": ["cafe"],
-        "maxResultCount": 20,
-        "rankPreference": "POPULARITY",
-        "locationRestriction": {
-            "circle": {
-                "center": {"latitude": float(lat), "longitude": float(lng)},
-                "radius": float(radius_m),
-            }
-        },
-    }
-    field_mask = ",".join(
-        [
-            "places.id",
-            "places.displayName",
-            "places.formattedAddress",
-            "places.location",
-            "places.rating",
-            "places.userRatingCount",
-        ]
-    )
-    payload = post_json(API_URL, api_key, body, field_mask)
-    places = payload.get("places", [])
-    if not isinstance(places, list):
-        raise CommandError(f"Unexpected Google response: {payload}")
-    return places
-
 
 class Command(BaseCommand):
     help = "Import cafes using a small set of centers (simple, deduped)."
@@ -151,7 +107,7 @@ class Command(BaseCommand):
             defaults = {
                 "name": display.get("text", "") if isinstance(display, dict) else "",
                 "address": place.get("formattedAddress", "") or "",
-                "coordinates": {"latitude": lat, "longitude": lng},
+                "coordinates": Point(float(lng), float(lat), srid=4326),
             }
             obj, was_created = Location.objects.update_or_create(google_place_id=pid, defaults=defaults)
             created += int(was_created)

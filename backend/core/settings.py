@@ -22,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
  
-DEBUG = bool(os.environ.get("DEBUG", default=0))
+DEBUG = os.environ.get("DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
  
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","127.0.0.1").split(",")
 
@@ -49,12 +49,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    #'django.contrib.gis'
+    'django.contrib.gis',
     'django_vite',
     'app',
     'schedule',
     'rest_framework',
-    #'rest_framework_gis'
+    'rest_framework_gis',
     'rest_framework.authtoken',
     'corsheaders',
     'coffeeshops',
@@ -100,9 +100,10 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 database_engine = os.getenv('DATABASE_ENGINE', 'sqlite3')
-if database_engine in {'postgres', 'postgresql', 'postgresql_psycopg2', 'postgis', 'django.contrib.gis.db.backends.postgis'}:
+if database_engine in {'postgis', 'django.contrib.gis.db.backends.postgis'}:
+    database_engine = 'django.contrib.gis.db.backends.postgis'
+elif database_engine in {'postgres', 'postgresql', 'postgresql_psycopg2'}:
     database_engine = 'django.db.backends.postgresql'
-    # database_engine = 'django.contrib.gis.db.backends.postgis'
 elif database_engine in {'sqlite', 'sqlite3'}:
     database_engine = 'django.db.backends.sqlite3'
 

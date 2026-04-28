@@ -3,7 +3,10 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { listCafeLocations } from '../api/client';
 
-const MAPBOX_STYLE = 'mapbox://styles/mapbox/streets-v12';
+const MAPBOX_STYLES = {
+  light: 'mapbox://styles/mapbox/streets-v12',
+  dark: 'mapbox://styles/mapbox/dark-v11'
+};
 
 function formatScore(value) {
   const numericValue = Number(value);
@@ -14,27 +17,178 @@ function formatScore(value) {
   return numericValue.toFixed(1);
 }
 
-function buildMarkerClassName(isSelected) {
-  return [
-    'group inline-flex origin-bottom items-center',
-    isSelected
-      ? ''
-      : '',
-  ].join(' ');
+function getMarkerColor(rating) {
+  const numericRating = Number(rating);
+  if (!Number.isFinite(numericRating)) return '#94a3b8';
+  if (numericRating < 2) return '#ef4444';
+  if (numericRating < 4) return '#22c55e';
+  return '#3b82f6';
+}
+
+function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
+  const color = getMarkerColor(location.aggregate_profile?.overall_rating);
+  const ease = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
+  if (isSelected) {
+    // Expanded card state
+    Object.assign(outerElement.style, {
+      width: '200px',
+      height: 'auto',
+      minHeight: '50px',
+      transition: `width 0.4s ${ease}, min-height 0.4s ${ease}`,
+      cursor: 'pointer',
+      outline: 'none',
+      zIndex: '10',
+    });
+
+    Object.assign(dropShape.style, {
+      width: '100%',
+      height: 'auto',
+      minHeight: '50px',
+      borderRadius: '12px',
+      transform: 'rotate(0deg)',
+      backgroundColor: color,
+      border: '2px solid rgba(255,255,255,0.85)',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      justifyContent: 'center',
+      boxSizing: 'border-box',
+      color: '#ffffff',
+      padding: '10px 12px',
+      transition: `all 0.4s ${ease}`,
+      overflow: 'hidden',
+    });
+
+    const svg = dropShape.querySelector('svg');
+    if (svg) {
+      Object.assign(svg.style, {
+        width: '0px',
+        height: '0px',
+        opacity: '0',
+        position: 'absolute',
+        transition: 'opacity 0.15s ease, width 0.15s ease, height 0.15s ease',
+      });
+    }
+
+    const content = dropShape.querySelector('.marker-content');
+    if (content) {
+      content.style.opacity = '1';
+      content.style.maxHeight = '200px';
+      content.style.transition = `opacity 0.3s ${ease} 0.15s, max-height 0.3s ${ease}`;
+    }
+  } else {
+    // Collapsed drop state
+    Object.assign(outerElement.style, {
+      width: '20px',
+      height: '20px',
+      minHeight: '20px',
+      transition: `width 0.35s ${ease}, height 0.35s ${ease}, min-height 0.35s ${ease}`,
+      cursor: 'pointer',
+      outline: 'none',
+      zIndex: '1',
+    });
+
+    Object.assign(dropShape.style, {
+      width: '100%',
+      height: '100%',
+      minHeight: 'unset',
+      borderRadius: '50% 50% 50% 0',
+      transform: 'rotate(-45deg)',
+      backgroundColor: color,
+      border: '2px solid rgba(255,255,255,0.85)',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      boxSizing: 'border-box',
+      color: '#ffffff',
+      padding: '0',
+      transition: `all 0.35s ${ease}`,
+      overflow: 'hidden',
+    });
+
+    const svg = dropShape.querySelector('svg');
+    if (svg) {
+      Object.assign(svg.style, {
+        width: '10px',
+        height: '10px',
+        opacity: '1',
+        position: 'static',
+        transform: 'rotate(45deg)',
+        marginTop: '-1px',
+        marginLeft: '1px',
+        transition: 'opacity 0.2s ease 0.2s, width 0.2s ease, height 0.2s ease',
+      });
+    }
+
+    const content = dropShape.querySelector('.marker-content');
+    if (content) {
+      content.style.opacity = '0';
+      content.style.maxHeight = '0';
+      content.style.transition = `opacity 0.1s ease, max-height 0.2s ${ease}`;
+    }
+  }
 }
 
 function buildMarkerElement(location, isSelected) {
-  const element = document.createElement('button');
-  element.type = 'button';
-  element.className = buildMarkerClassName(isSelected);
-  element.setAttribute('aria-label', `Select ${location.name}`);
+  const outerElement = document.createElement('div');
+  const dropShape = document.createElement('div');
 
-  const label = document.createElement('span');
-  label.className = 'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors';
-  label.textContent = location.name;
-  element.appendChild(label);
+  // Coffee icon SVG
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
 
-  return element;
+  svg.innerHTML = `
+    <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
+    <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
+    <line x1="6" x2="6" y1="2" y2="4"></line>
+    <line x1="10" x2="10" y1="2" y2="4"></line>
+    <line x1="14" x2="14" y1="2" y2="4"></line>
+  `;
+  dropShape.appendChild(svg);
+
+  // Hidden info content (revealed on morph)
+  const content = document.createElement('div');
+  content.className = 'marker-content';
+  Object.assign(content.style, {
+    opacity: '0',
+    maxHeight: '0',
+    overflow: 'hidden',
+    fontSize: '11px',
+    lineHeight: '1.4',
+    color: '#ffffff',
+    whiteSpace: 'normal',
+  });
+
+  const overallRating = formatScore(location.aggregate_profile?.overall_rating);
+  const summaryItems = getSelectedSummary(location) || [];
+  const subRatings = summaryItems
+    .filter((item) => item.label !== 'Overall')
+    .map((item) => `<span style="opacity:0.75;">${item.label}</span> <b>${item.value}</b>`)
+    .join(' &middot; ');
+
+  content.innerHTML =
+    `<div style="font-weight:700;font-size:13px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;">` +
+      `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${location.name}</span>` +
+      `<span style="flex-shrink:0;margin-left:8px;">${overallRating}</span>` +
+    `</div>` +
+    (subRatings ? `<div>${subRatings}</div>` : '');
+
+  dropShape.appendChild(content);
+  outerElement.appendChild(dropShape);
+
+  applyMarkerStyle(outerElement, dropShape, location, isSelected);
+  outerElement.setAttribute('aria-label', `Select ${location.name}`);
+  return outerElement;
 }
 
 function getSelectedSummary(location) {
@@ -91,12 +245,21 @@ export function PlacesMap() {
   const [selectedLocationId, setSelectedLocationId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
 
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim() || '';
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) || null,
     [locations, selectedLocationId],
   );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -145,7 +308,7 @@ export function PlacesMap() {
     mapboxgl.accessToken = mapboxToken;
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: MAPBOX_STYLE,
+      style: isDarkMode ? MAPBOX_STYLES.dark : MAPBOX_STYLES.light,
       center: [26.1025, 44.4268],
       zoom: 12,
       cooperativeGestures: true,
@@ -175,6 +338,12 @@ export function PlacesMap() {
       mapRef.current = null;
     };
   }, [mapboxToken]);
+
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setStyle(isDarkMode ? MAPBOX_STYLES.dark : MAPBOX_STYLES.light);
+    }
+  }, [isDarkMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -209,11 +378,11 @@ export function PlacesMap() {
         setSelectedLocationId(location.id);
       });
 
-      const marker = new mapboxgl.Marker({ element, anchor: 'bottom' })
+      const marker = new mapboxgl.Marker({ element, anchor: 'center' })
         .setLngLat([longitude, latitude])
         .addTo(map);
 
-      markerRefs.current.set(location.id, { marker, element });
+      markerRefs.current.set(location.id, { marker, element, location });
     });
 
     if (map.loaded()) {
@@ -235,16 +404,18 @@ export function PlacesMap() {
   }, [locations]);
 
   useEffect(() => {
-    markerRefs.current.forEach(({ element }, locationId) => {
+    markerRefs.current.forEach(({ marker, element, location }, locationId) => {
       const isSelected = locationId === selectedLocationId;
-      const label = element.firstElementChild;
-      if (!label) {
-        return;
-      }
+      applyMarkerStyle(element, element.firstChild, location, isSelected);
 
-      label.className = isSelected
-        ? 'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold shadow-lg border-amber-200 bg-slate-950 text-white ring-2 ring-amber-300/70'
-        : 'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold shadow-lg border-slate-200/70 bg-white/95 text-slate-800 hover:border-amber-200 hover:text-amber-700';
+      if (isSelected && mapRef.current) {
+        mapRef.current.flyTo({
+          center: marker.getLngLat(),
+          speed: 1.2,
+          curve: 1.42,
+          essential: true,
+        });
+      }
     });
   }, [selectedLocationId]);
 
@@ -304,28 +475,9 @@ export function PlacesMap() {
               </div>
 
               <div className="rounded-2xl border bg-background p-4">
-                <p className="text-sm font-semibold">Rating summary</p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {(getSelectedSummary(selectedLocation) || []).map((item) => (
-                    <div key={item.label} className="rounded-xl border bg-card px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
-                      <p className="mt-1 text-lg font-semibold">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-background p-4">
-                <p className="text-sm font-semibold">AI description</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {selectedLocation.aggregate_profile?.ai_description || 'No AI summary available yet.'}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                <p className="font-semibold text-foreground">Coordinates</p>
-                <p className="mt-2">
-                  {selectedLocation.coordinates.latitude.toFixed(5)}, {selectedLocation.coordinates.longitude.toFixed(5)}
+                <p className="text-sm font-semibold">Overview</p>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  {selectedLocation.aggregate_profile?.ai_description || 'No description available yet.'}
                 </p>
               </div>
             </div>

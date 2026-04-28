@@ -3,12 +3,19 @@
 
 <head>
   <title>StudyBuddy</title>
+  <script>
+    try {
+      if (localStorage.getItem('theme') === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+    } catch (e) {}
+  </script>
   {% vite_react_refresh %}
   {% vite_hmr_client %}
   {% vite_asset 'assets/styles/style.css' %}
 </head>
 
-<body class="bg-emerald-700 text-white">
+<body>
   <div id="root"></div>
   {% vite_asset 'assets/javascript/app.jsx' %}
 </body>

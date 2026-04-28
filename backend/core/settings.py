@@ -49,12 +49,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.gis',
+    #'django.contrib.gis'
     'django_vite',
     'app',
     'schedule',
     'rest_framework',
-    'rest_framework_gis',
+    #'rest_framework_gis'
     'rest_framework.authtoken',
     'corsheaders',
     'coffeeshops',
@@ -101,7 +101,8 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 database_engine = os.getenv('DATABASE_ENGINE', 'sqlite3')
 if database_engine in {'postgres', 'postgresql', 'postgresql_psycopg2', 'postgis', 'django.contrib.gis.db.backends.postgis'}:
-    database_engine = 'django.contrib.gis.db.backends.postgis'
+    database_engine = 'django.db.backends.postgresql'
+    # database_engine = 'django.contrib.gis.db.backends.postgis'
 elif database_engine in {'sqlite', 'sqlite3'}:
     database_engine = 'django.db.backends.sqlite3'
 

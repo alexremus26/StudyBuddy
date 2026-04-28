@@ -4,40 +4,51 @@ from django.db import models
 
 
 class Location(models.Model):
-	id = models.BigAutoField(primary_key=True)
+	Pending = 0
+	Done = 1
+
+	STATUS_CHOICES = [
+		(Pending, "Pending"),
+		(Done, "Done"),
+	]
+
+	google_place_id = models.CharField(max_length=255, unique=True, db_index=True)
 	name = models.CharField(max_length=100)
 	address = models.CharField(max_length=255, blank=True)
-	has_wifi = models.BooleanField(default=True)
-	has_outlets = models.BooleanField(default=True)
-	is_quiet = models.BooleanField(default=False)
+	coordinates = models.JSONField(null=True, blank=True)
+	status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=Pending)
 
 	class Meta:
-		db_table = 'app_location'
+		db_table = "app_location"
 
 
 class UserFavPlace(models.Model):
-	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorite_places')
-	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name='favorited_by')
+	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorite_places")
+	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="favorited_by")
 	saved_at = models.DateTimeField(auto_now_add=True)
-	custom_note = models.CharField(max_length=100, blank=True, help_text="e.g., 'Best coffee, terrible chairs'")
+	custom_note = models.CharField(
+		max_length=100,
+		blank=True,
+		help_text="e.g., 'Best coffee, terrible chairs'",
+	)
 
 	class Meta:
-		db_table = 'app_userfavplace'
+		db_table = "app_userfavplace"
 
 
 class UserReview(models.Model):
-	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
-	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name='reviews')
+	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reviews")
+	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="reviews")
 	rating = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
 	comment = models.TextField(max_length=255, blank=True, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 
 	class Meta:
-		db_table = 'app_userreview'
+		db_table = "app_userreview"
 
 
 class AIAggregateProfile(models.Model):
-	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name='aggregate_profiles')
+	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="aggregate_profiles")
 	AIdescription = models.TextField(max_length=255, blank=True, null=True)
 	laptop_friendly = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
 	study_friendly = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
@@ -47,17 +58,35 @@ class AIAggregateProfile(models.Model):
 	created_at = models.DateTimeField(auto_now_add=True)
 
 	class Meta:
-		db_table = 'app_aiaggregateprofile'
+		db_table = "app_aiaggregateprofile"
 
 	def update_overall_rating(self):
-		total = self.laptop_friendly + self.study_friendly + self.overall_corwdness + self.noise_level + self.overall_rating
+		total = (
+			self.laptop_friendly
+			+ self.study_friendly
+			+ self.overall_corwdness
+			+ self.noise_level
+			+ self.overall_rating
+		)
 		self.overall_rating = total / 5
 		self.save()
 
-	def apply_profile(self, ai_description: str, laptop_friendly: int, study_friendly: int, crowdness: int, noise_level: int) -> bool:
+	def apply_profile(
+		self,
+		ai_description: str,
+		laptop_friendly: int,
+		study_friendly: int,
+		crowdness: int,
+		noise_level: int,
+	) -> bool:
 		self.AIdescription = ai_description
 
-		for rating, name in [(laptop_friendly, "Laptop Friendly"), (study_friendly, "Study Friendly"), (crowdness, "Overall Crowdness"), (noise_level, "Noise Level")]:
+		for rating, name in [
+			(laptop_friendly, "Laptop Friendly"),
+			(study_friendly, "Study Friendly"),
+			(crowdness, "Overall Crowdness"),
+			(noise_level, "Noise Level"),
+		]:
 			if 0 <= rating <= 5:
 				setattr(self, name.lower().replace(" ", "_"), rating)
 			else:
@@ -66,7 +95,6 @@ class AIAggregateProfile(models.Model):
 
 		self.update_overall_rating()
 		return True
-
 
 	def __str__(self):
 		return f"Aggregate Profile (Overall: {self.overall_rating:.1f})"

@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:17
+    image: postgis/postgis:17-3.4
+    platform: linux/amd64
     volumes:
       - postgres_data:/var/lib/postgresql/data
     env_file:
@@ -17,6 +18,16 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   web:
     build: ./backend
     container_name: django-app
@@ -27,8 +38,31 @@ services:
       - ./backend:/app
     env_file:
       - .env
+    environment:
+      - DATABASE_ENGINE=django.contrib.gis.db.backends.postgis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       db:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    container_name: celery-worker
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_ENGINE=django.contrib.gis.db.backends.postgis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: sh -c "celery -A core worker --loglevel=info -Q coffeeshops"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   vite:

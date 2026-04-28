@@ -1,10 +1,11 @@
-from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db import models
+
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    
+
     timezone = models.CharField(max_length=50, default='UTC', help_text="Crucial for a planner app!")
     total_study_hours = models.PositiveIntegerField(default=0)
     current_streak = models.PositiveIntegerField(default=0)
@@ -75,6 +76,7 @@ class SchoolClass(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_day_of_week_display()})"
 
+
 class TaskBlock(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='task_blocks')
     assignment = models.ForeignKey(
@@ -91,6 +93,7 @@ class TaskBlock(models.Model):
     class Meta:
         db_table = 'app_taskblock'
 
+
 class Achievement(models.Model):
     name = models.CharField(max_length=50)
     description = models.CharField(max_length=255)
@@ -98,28 +101,8 @@ class Achievement(models.Model):
     points_awarded = models.PositiveIntegerField(default=10)
     icon = models.ImageField(upload_to='achievement_icons/', blank=True, null=True)
 
+
 class UserAchievement(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='achievements')
     achievement = models.ForeignKey(Achievement, on_delete=models.CASCADE, related_name='earned_by')
     earned_at = models.DateTimeField(auto_now_add=True)
-
-class Location(models.Model):
-    name = models.CharField(max_length=100)
-    description = models.TextField()
-    address = models.CharField(max_length=255, blank=True)
-    has_wifi = models.BooleanField(default=True)
-    has_outlets = models.BooleanField(default=True)
-    is_quiet = models.BooleanField(default=False)
-
-class UserFavPlace(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorite_places')
-    location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name='favorited_by')
-    saved_at = models.DateTimeField(auto_now_add=True)
-    custom_note = models.CharField(max_length=100, blank=True, help_text="e.g., 'Best coffee, terrible chairs'")
-
-class Review(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
-    location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name='reviews')
-    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
-    comment = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)

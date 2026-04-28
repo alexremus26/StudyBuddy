@@ -49,16 +49,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.gis',
     'django_vite',
     'app',
     'schedule',
     'rest_framework',
+    'rest_framework_gis',
     'rest_framework.authtoken',
+    'corsheaders',
+    'coffeeshops',
     'drf_spectacular',
 
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -94,11 +99,15 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+database_engine = os.getenv('DATABASE_ENGINE', 'sqlite3')
+if database_engine in {'postgres', 'postgresql', 'postgresql_psycopg2', 'postgis', 'django.contrib.gis.db.backends.postgis'}:
+    database_engine = 'django.contrib.gis.db.backends.postgis'
+elif database_engine in {'sqlite', 'sqlite3'}:
+    database_engine = 'django.db.backends.sqlite3'
+
 DATABASES = {
      'default': {
-         'ENGINE': 'django.db.backends.{}'.format(
-             os.getenv('DATABASE_ENGINE', 'sqlite3')
-         ),
+         'ENGINE': database_engine,
          'NAME': os.getenv('DATABASE_NAME', 'polls'),
          'USER': os.getenv('DATABASE_USERNAME', 'myprojectuser'),
          'PASSWORD': os.getenv('DATABASE_PASSWORD', 'password'),
@@ -170,6 +179,19 @@ REST_FRAMEWORK = {
     "rest_framework.authentication.TokenAuthentication",
     "rest_framework.authentication.SessionAuthentication"
     ],
+}
+
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',
+]
+
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TASK_ROUTES = {
+    'coffeeshops.tasks.*': {'queue': 'coffeeshops'},
 }
 
 SPECTACULAR_SETTINGS = {

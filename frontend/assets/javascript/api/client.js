@@ -276,6 +276,14 @@ export async function listTaskBlocks() {
   return data;
 }
 
+export async function listCafeLocations() {
+  const { data, error, response } = await apiClient.GET('/api/coffeeshops/locations/');
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
 export async function createTaskBlock(payload) {
   return postJson('/api/schedule/task-blocks/', payload);
 }

@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { IntroSection } from './components/AuthSection';
 import { Schedule } from './components/Schedule';
 import { Planner } from './components/Planner';
+import { PlacesMap } from './components/PlacesMap';
 import { LandingPage } from './components/LandingPage';
 import {
   getMe,
@@ -16,7 +17,7 @@ import {
   updateMyProfile,
 } from './api/client';
 
-function HomeTab({ profile, onGoSchedule, onLogout }) {
+function HomeTab({ profile, onGoSchedule, onGoCafes, onLogout }) {
   return (
     <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
       <h2 className="text-3xl font-bold">Welcome!</h2>
@@ -51,6 +52,18 @@ function HomeTab({ profile, onGoSchedule, onLogout }) {
             className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg opacity-50 cursor-not-allowed text-sm"
           >
             Coming Soon
+          </button>
+        </div>
+        <div className="rounded-lg border bg-background p-6">
+          <h3 className="font-semibold text-lg mb-2">Find My Café</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            Browse study-friendly cafés on an interactive map and inspect their rating summaries.
+          </p>
+          <button
+            onClick={onGoCafes}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
+          >
+            Open Map
           </button>
         </div>
       </div>
@@ -91,6 +104,8 @@ function AppShell() {
   const currentPath = location.pathname;
   const currentTab = currentPath === '/schedule'
     ? 'schedule'
+    : currentPath === '/cafes'
+      ? 'cafes'
     : currentPath === '/focus'
       ? 'focus'
       : currentPath === '/planner'
@@ -110,6 +125,11 @@ function AppShell() {
 
     if (tabId === 'planner') {
       navigate('/planner');
+      return;
+    }
+
+    if (tabId === 'cafes') {
+      navigate('/cafes');
       return;
     }
 
@@ -246,11 +266,13 @@ function AppShell() {
               <HomeTab
                 profile={profile}
                 onGoSchedule={() => navigate('/schedule')}
+                onGoCafes={() => navigate('/cafes')}
                 onLogout={logout}
               />
             )}
           />
           <Route path="/schedule" element={<Schedule />} />
+          <Route path="/cafes" element={<PlacesMap />} />
           <Route path="/focus" element={<FocusTab />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="*" element={<Navigate to="/" replace />} />

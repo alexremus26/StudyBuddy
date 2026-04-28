@@ -40,6 +40,10 @@ Frontend dependencies or frontend Dockerfile:
 - Use: `docker compose build vite && docker compose up -d vite`
 - For OCR packages specifically: `docker compose exec vite npm install tesseract.js pdfjs-dist`
 
+Mapbox map:
+- Add `VITE_MAPBOX_ACCESS_TOKEN` to your root `.env` so the `vite` container can read it.
+- If you build the frontend image directly, pass the same value as a build arg.
+
 Schedule parser (Hybrid + Gemini):
 - Hybrid OCR runs locally by default and does not require an API key.
 - For harder schedules, backend can auto-escalate to Gemini when confidence is low.

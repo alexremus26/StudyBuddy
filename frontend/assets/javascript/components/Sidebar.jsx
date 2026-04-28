@@ -30,6 +30,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
     { id: 'home', label: 'Home' },
     { id: 'schedule', label: 'Schedule' },
     { id: 'planner', label: 'AI Planner' },
+    { id: 'cafes', label: 'Find My Café' },
     { id: 'focus', label: 'Focus Sessions' },
   ];
 

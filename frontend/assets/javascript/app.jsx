@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { IntroSection } from './components/AuthSection';
 import { Schedule } from './components/Schedule';
 import { Planner } from './components/Planner';
+import { LandingPage } from './components/LandingPage';
 import {
   getMe,
   loginUser,
@@ -218,6 +219,14 @@ function AppShell() {
     }
   }, [currentPath, isLoggedIn, navigate]);
 
+  if (!isLoggedIn) {
+    return (
+      <Routes>
+        <Route path="*" element={<LandingPage onAuthSubmit={handleAuthSubmit} />} />
+      </Routes>
+    );
+  }
+
   return (
     <div className="size-full flex min-h-screen bg-background text-foreground">
       <Sidebar
@@ -231,38 +240,20 @@ function AppShell() {
       />
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <Routes>
-          {isLoggedIn ? (
-            <>
-              <Route
-                path="/"
-                element={(
-                  <HomeTab
-                    profile={profile}
-                    onGoSchedule={() => navigate('/schedule')}
-                    onLogout={logout}
-                  />
-                )}
+          <Route
+            path="/"
+            element={(
+              <HomeTab
+                profile={profile}
+                onGoSchedule={() => navigate('/schedule')}
+                onLogout={logout}
               />
-              <Route path="/schedule" element={<Schedule />} />
-              <Route path="/focus" element={<FocusTab />} />
-              <Route path="/planner" element={<Planner />} />
-              <Route path="/login" element={<Navigate to="/" replace />} />
-              <Route path="/register" element={<Navigate to="/" replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </>
-          ) : (
-            <>
-              <Route
-                path="/login"
-                element={<IntroSection mode="login" onSubmit={(values) => handleAuthSubmit(values, 'login')} />}
-              />
-              <Route
-                path="/register"
-                element={<IntroSection mode="register" onSubmit={(values) => handleAuthSubmit(values, 'register')} />}
-              />
-              <Route path="*" element={<Navigate to="/login" replace />} />
-            </>
-          )}
+            )}
+          />
+          <Route path="/schedule" element={<Schedule />} />
+          <Route path="/focus" element={<FocusTab />} />
+          <Route path="/planner" element={<Planner />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

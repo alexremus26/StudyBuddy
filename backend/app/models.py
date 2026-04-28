@@ -16,12 +16,38 @@ class UserProfile(models.Model):
 
 
 class Assignment(models.Model):
+    CATEGORY_HOMEWORK = 'homework'
+    CATEGORY_PROJECT = 'project'
+    CATEGORY_EXAM = 'exam'
+    CATEGORY_READING = 'reading'
+    CATEGORY_OTHER = 'other'
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_HOMEWORK, 'Homework'),
+        (CATEGORY_PROJECT, 'Project'),
+        (CATEGORY_EXAM, 'Exam'),
+        (CATEGORY_READING, 'Reading'),
+        (CATEGORY_OTHER, 'Other'),
+    ]
+
+    PRIORITY_LOW = 1
+    PRIORITY_MEDIUM = 2
+    PRIORITY_HIGH = 3
+
+    PRIORITY_CHOICES = [
+        (PRIORITY_LOW, 'Low'),
+        (PRIORITY_MEDIUM, 'Medium'),
+        (PRIORITY_HIGH, 'High'),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assignments')
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     estimated_duration_minutes = models.PositiveIntegerField(default=60)
     is_completed = models.BooleanField(default=False)
     due_date = models.DateTimeField(blank=True, null=True)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
+    priority = models.IntegerField(choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -71,6 +97,7 @@ class SchoolClass(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     location = models.CharField(max_length=255, blank=True)
+    lecturer_name = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

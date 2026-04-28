@@ -205,11 +205,13 @@ def _compute_block_confidence(block):
 
     # Slight penalty for table-based extraction which is more error-prone here
     if "table" in method:
-        raw_score *= 0.9
+        # Table-assigned blocks are much more likely to be misaligned; penalize more
+        raw_score *= 0.65
 
     # Extra penalty when start exists but end missing and title looks like a subject
+    # (these often indicate fragmented table rows or OCR line-break issues)
     if start and not end and title_has_letters:
-        raw_score *= 0.8
+        raw_score *= 0.6
 
     # Clamp and return rounded
     return round(max(0.0, min(1.0, raw_score)), 4)
@@ -406,8 +408,15 @@ class ScheduleParser:
             diagnostics["hybrid_table_ratio"] = round(table_ratio, 4)
 
             is_sparse_result = extracted_blocks < self.min_blocks_for_hybrid_accept
-            is_table_heavy = table_ratio >= 0.5
-            if avg_confidence < self.confidence_threshold and (is_sparse_result or is_table_heavy):
+            # Consider layouts table-heavy at a lower threshold so we escalate earlier
+            is_table_heavy = table_ratio >= 0.3
+            if is_table_heavy:
+                needs_escalation = True
+                escalation_reason = "table_heavy_layout"
+                warnings.append(
+                    f"Hybrid OCR table-heavy layout (ratio {table_ratio:.2f}); escalating to Gemini Vision..."
+                )
+            elif avg_confidence < self.confidence_threshold and (is_sparse_result or is_table_heavy):
                 needs_escalation = True
                 escalation_reason = "low_hybrid_confidence_sparse_or_table_heavy"
                 reason_note = "sparse result" if is_sparse_result else "table-heavy result"
@@ -420,7 +429,7 @@ class ScheduleParser:
             diagnostics["escalation_used"] = True
             diagnostics["escalation_reason"] = escalation_reason
             gemini_blocks, gemini_warnings, gemini_output, gemini_failure_type = self._parse_with_gemini_vision(raw_text, max_blocks)
-            
+
             if gemini_blocks:
                 # Gemini succeeded; use its result
                 diagnostics["escalation_method"] = "gemini_vision"
@@ -486,7 +495,13 @@ class ScheduleParser:
                 "- If a cell is empty, skip it\n"
                 "- Do not invent missing times or days\n"
                 "- Maintain grid logic precisely\n"
-                "- One block per schedule entry\n\n"
+                "- One block per schedule entry\n"
+                "- If you can identify subject, instructor(s), and location, format title EXACTLY as: \"Subject | Instructor | Location\"\n"
+                "- Use a single pipe separator with spaces: \" | \" (do not use slashes or commas as separators)\n"
+                "- If multiple instructors appear, join them with \", \": \"Instructor A, Instructor B\"\n"
+                "- If only some parts are available, keep the order and omit missing parts (e.g. \"Subject | Instructor\" or \"Subject | Location\")\n"
+                "- Strip labels like \"Location:\", \"Prof.\", \"Lect.\", \"Instructor\" from parts\n"
+                "- Do NOT include class type (Course/Lab/Seminar) inside the title\n\n"
                 "OCR Text:\n" + str(raw_text)[:5000]
             )
             
@@ -534,7 +549,8 @@ class ScheduleParser:
                     "extraction_method": "gemini_vision",
                 })
                 # compute confidence for Gemini blocks and ensure a reasonable baseline
-                blocks[-1]["confidence"] = max(_compute_block_confidence(blocks[-1]), 0.75)
+                # avoid inflating Gemini answers too high; keep baseline modest
+                blocks[-1]["confidence"] = max(_compute_block_confidence(blocks[-1]), 0.6)
             
             # Include Gemini's own warnings
             gemini_warnings = payload.get("warnings", [])

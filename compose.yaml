@@ -65,6 +65,25 @@ services:
       redis:
         condition: service_healthy
 
+  gemini-worker:
+    build: ./backend
+    container_name: celery-gemini-worker
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_ENGINE=django.contrib.gis.db.backends.postgis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: sh -c "celery -A core worker --loglevel=info -Q gemini --concurrency=1"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   vite:
     build:
       context: ./frontend

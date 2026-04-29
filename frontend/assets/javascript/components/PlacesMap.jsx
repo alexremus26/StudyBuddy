@@ -25,17 +25,41 @@ function getMarkerColor(rating) {
   return '#3b82f6';
 }
 
+// Marker focus CSS — injected once into the document head.
+// This controls opacity/pointer-events via data attributes so it can NEVER
+// conflict with the shape/size inline styles set by applyMarkerStyle.
+const MARKER_STYLE_ID = 'cafe-marker-focus-styles';
+if (!document.getElementById(MARKER_STYLE_ID)) {
+  const styleSheet = document.createElement('style');
+  styleSheet.id = MARKER_STYLE_ID;
+  styleSheet.textContent = `
+    .cafe-marker {
+      opacity: 1;
+      pointer-events: auto;
+      transition: opacity 0.3s ease, width 0.35s cubic-bezier(0.4,0,0.2,1), height 0.35s cubic-bezier(0.4,0,0.2,1), min-height 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    .cafe-marker[data-focus="dimmed"] {
+      opacity: 0.15 !important;
+      pointer-events: none !important;
+    }
+    .cafe-marker[data-focus="match"] {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+  `;
+  document.head.appendChild(styleSheet);
+}
+
 function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
   const color = getMarkerColor(location.aggregate_profile?.overall_rating);
   const ease = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
   if (isSelected) {
-    // Expanded card state
+    // Expanded card state — only shape/size, never opacity
     Object.assign(outerElement.style, {
       width: '200px',
       height: 'auto',
       minHeight: '50px',
-      transition: `width 0.4s ${ease}, min-height 0.4s ${ease}`,
       cursor: 'pointer',
       outline: 'none',
       zIndex: '10',
@@ -57,7 +81,7 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
       boxSizing: 'border-box',
       color: '#ffffff',
       padding: '10px 12px',
-      transition: `all 0.4s ${ease}`,
+      transition: `border-radius 0.4s ${ease}, transform 0.4s ${ease}, padding 0.4s ${ease}, min-height 0.4s ${ease}, box-shadow 0.3s ${ease}`,
       overflow: 'hidden',
     });
 
@@ -79,12 +103,11 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
       content.style.transition = `opacity 0.3s ${ease} 0.15s, max-height 0.3s ${ease}`;
     }
   } else {
-    // Collapsed drop state
+    // Collapsed drop state — only shape/size, never opacity
     Object.assign(outerElement.style, {
       width: '20px',
       height: '20px',
       minHeight: '20px',
-      transition: `width 0.35s ${ease}, height 0.35s ${ease}, min-height 0.35s ${ease}`,
       cursor: 'pointer',
       outline: 'none',
       zIndex: '1',
@@ -106,7 +129,7 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
       boxSizing: 'border-box',
       color: '#ffffff',
       padding: '0',
-      transition: `all 0.35s ${ease}`,
+      transition: `border-radius 0.35s ${ease}, transform 0.35s ${ease}, padding 0.35s ${ease}, min-height 0.35s ${ease}, box-shadow 0.3s ${ease}`,
       overflow: 'hidden',
     });
 
@@ -135,6 +158,7 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
 
 function buildMarkerElement(location, isSelected) {
   const outerElement = document.createElement('div');
+  outerElement.className = 'cafe-marker';
   const dropShape = document.createElement('div');
 
   // Coffee icon SVG
@@ -479,14 +503,15 @@ export function PlacesMap() {
     });
   }, [locations]);
 
-  // Selection: apply marker style + fly to
+  // EFFECT 1: Selection — apply marker shape (card vs pin) + fly-to
   useEffect(() => {
+    const map = mapRef.current;
     markerRefs.current.forEach(({ marker, element, location }, locationId) => {
       const isSelected = locationId === selectedLocationId;
       applyMarkerStyle(element, element.firstChild, location, isSelected);
 
-      if (isSelected && mapRef.current && !isSearchActive) {
-        mapRef.current.flyTo({
+      if (isSelected && map && !isSearchActive) {
+        map.flyTo({
           center: marker.getLngLat(),
           speed: 1.2,
           curve: 1.42,
@@ -496,29 +521,33 @@ export function PlacesMap() {
     });
   }, [selectedLocationId, isSearchActive]);
 
-  // Search focus: opacity + pin size + floating labels
+  // EFFECT 2: Search focus — opacity via data attributes + CSS, pin scaling, labels
+  // Completely independent from selection styling — uses data-focus attribute
+  // which is handled by CSS rules injected at module load. No inline opacity.
   useEffect(() => {
-    // Clean up previous labels
+    // Clean up previous floating labels
     searchLabelRefs.current.forEach((m) => m.remove());
     searchLabelRefs.current = [];
+
+    const map = mapRef.current;
 
     markerRefs.current.forEach(({ marker, element, location }, locationId) => {
       const isSelected = locationId === selectedLocationId;
 
       if (isSearchActive) {
         const isMatch = filteredLocationIds.has(locationId);
-        element.style.opacity = isMatch ? '1' : '0.15';
-        element.style.pointerEvents = isMatch ? 'auto' : 'none';
-        element.style.transition = 'opacity 0.35s ease';
 
-        // Scale matched collapsed pins bigger via width/height
+        // Set data attribute — CSS handles opacity + pointer-events
+        element.dataset.focus = isMatch ? 'match' : 'dimmed';
+
+        // Scale matched collapsed pins bigger
         if (isMatch && !isSelected) {
           element.style.width = '28px';
           element.style.height = '28px';
           element.style.minHeight = '28px';
 
-          // Add floating name label as a separate Mapbox marker
-          if (mapRef.current && filteredLocationIds.size <= 5) {
+          // Add floating name label
+          if (map && filteredLocationIds.size <= 5) {
             const labelEl = document.createElement('div');
             Object.assign(labelEl.style, {
               padding: '3px 8px',
@@ -537,19 +566,14 @@ export function PlacesMap() {
             const labelMarker = new mapboxgl.Marker({ element: labelEl, anchor: 'bottom' })
               .setLngLat(lngLat)
               .setOffset([0, -22])
-              .addTo(mapRef.current);
+              .addTo(map);
 
             searchLabelRefs.current.push(labelMarker);
           }
-        } else if (!isSelected) {
-          element.style.width = '20px';
-          element.style.height = '20px';
-          element.style.minHeight = '20px';
         }
       } else {
-        element.style.opacity = '1';
-        element.style.pointerEvents = 'auto';
-        element.style.transition = 'opacity 0.35s ease';
+        // Remove focus attribute — CSS reverts to default (opacity 1)
+        delete element.dataset.focus;
 
         // Restore default collapsed size if not selected
         if (!isSelected) {
@@ -654,7 +678,7 @@ export function PlacesMap() {
             </div>
           </div>
 
-          <div className="relative min-h-[68vh] bg-slate-100">
+          <div className="relative min-h-[68vh] bg-card dark:bg-neutral-900">
             {isLoading ? (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/75 text-sm text-muted-foreground backdrop-blur-sm">
                 Loading cafés...

@@ -28,7 +28,7 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","127.0.0.1").split(",")
 
 # Gemini Vision API Configuration for advanced schedule extraction
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 GEMINI_ESCALATION_CONFIDENCE_THRESHOLD = float(os.environ.get("GEMINI_ESCALATION_CONFIDENCE_THRESHOLD", "0.62"))
 GEMINI_ESCALATION_MIN_BLOCKS = int(os.environ.get("GEMINI_ESCALATION_MIN_BLOCKS", "4"))
 

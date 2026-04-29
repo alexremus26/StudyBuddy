@@ -3,8 +3,10 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from .models import Location
-from .tasks import enqueue_reviews_pipeline
+from django.db.models import Prefetch
+
+from .models import AIAggregateProfile, Location
+from .serializers import LocationMapSerializer
 
 
 @api_view(["POST"])
@@ -33,6 +35,8 @@ def enqueue_reviews_demo(request):
             {"detail": "No locations with google_place_id found."},
             status=status.HTTP_404_NOT_FOUND,
         )
+
+    from .tasks import enqueue_reviews_pipeline
 
     async_result = enqueue_reviews_pipeline(google_place_ids)
 
@@ -65,3 +69,21 @@ def reviews_task_status(request, task_id: str):
         {"task_id": task_id, "state": state, "data": result.result},
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def location_map_list(request):
+    locations = (
+        Location.objects.filter(coordinates__isnull=False)
+        .order_by("name")
+        .prefetch_related(
+            Prefetch(
+                "aggregate_profiles",
+                queryset=AIAggregateProfile.objects.order_by("-created_at"),
+            )
+        )
+    )
+
+    serializer = LocationMapSerializer(locations, many=True, context={"request": request})
+    return Response(serializer.data, status=status.HTTP_200_OK)

@@ -26,6 +26,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('app.urls')),
+    path('api/coffeeshops/', include('coffeeshops.urls')),
     path('api/schedule/', include('schedule.urls')),
     path('api/register/', views.user_register, name='user-register'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),

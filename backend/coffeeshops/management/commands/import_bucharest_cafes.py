@@ -18,6 +18,8 @@ DEFAULT_CENTERS: List[Dict[str, float]] = [
     {"latitude": 44.4174, "longitude": 26.1131},
     {"latitude": 44.4411, "longitude": 26.1363},
     {"latitude": 44.4609, "longitude": 26.0959},
+    {"latitude": 44.4364, "longitude": 26.0983},
+    {"latitude": 44.4424, "longitude": 26.1060},
 ]
 
 class Command(BaseCommand):

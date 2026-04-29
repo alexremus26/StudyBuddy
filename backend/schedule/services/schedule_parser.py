@@ -342,7 +342,7 @@ class ScheduleParser:
     def __init__(self):
         """Initialize parser with Gemini API key from Django settings."""
         self.gemini_api_key = getattr(settings, "GEMINI_API_KEY", "").strip()
-        self.gemini_model = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash").strip()
+        self.gemini_model = settings.GEMINI_MODEL
         self.confidence_threshold = getattr(settings, "GEMINI_ESCALATION_CONFIDENCE_THRESHOLD", 0.62)
         self.min_blocks_for_hybrid_accept = max(
             int(getattr(settings, "GEMINI_ESCALATION_MIN_BLOCKS", 4) or 4),

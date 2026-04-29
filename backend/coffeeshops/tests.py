@@ -84,9 +84,6 @@ class ProcessLocationProfileTaskTests(TestCase):
 
 		self.assertEqual(result["status"], "queued")
 		self.assertEqual(result["generate_task_id"], "task-123")
-		self.assertEqual(len(result["reviews"]), 2)
-		self.assertEqual(result["reviews"][0]["source"], "google")
-		self.assertEqual(result["reviews"][1]["source"], "app")
 
 		def fake_build_ai_profile_from_reviews(location, reviews_payload):
 			captured_payload["location_id"] = location.id
@@ -105,8 +102,14 @@ class ProcessLocationProfileTaskTests(TestCase):
 		with patch(
 			"coffeeshops.tasks.build_ai_profile_from_reviews",
 			side_effect=fake_build_ai_profile_from_reviews,
+		), patch(
+			"coffeeshops.tasks.fetch_google_reviews",
+			return_value=google_reviews_payload,
+		), patch(
+			"coffeeshops.tasks._serialize_user_reviews",
+			return_value=app_reviews,
 		):
-			generate_result = generate_ai_profile_task.run(self.location.id, result["reviews"])
+			generate_result = generate_ai_profile_task.run(self.location.id)
 
 		self.assertEqual(captured_payload["location_id"], self.location.id)
 		self.assertEqual(len(captured_payload["reviews"]), 2)

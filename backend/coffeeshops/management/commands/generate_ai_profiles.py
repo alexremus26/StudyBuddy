@@ -12,8 +12,18 @@ class Command(BaseCommand):
         parser.add_argument("--offset", type=int, default=0, help="Skip the first N rows")
         parser.add_argument("--only-pending", action="store_true", help="Queue only pending locations")
         parser.add_argument("--dry-run", action="store_true", help="Print locations without queueing")
+        parser.add_argument("--location-id", type=int, default=None, help="Re-generate profile for a single location ID")
 
     def handle(self, *args, **options):
+        if options["location_id"]:
+            try:
+                location = Location.objects.get(id=options["location_id"])
+            except Location.DoesNotExist:
+                raise CommandError(f"Location with id={options['location_id']} not found.")
+            async_result = process_location_profile_task.delay(location.id)
+            self.stdout.write(self.style.SUCCESS(f"Queued {location.id} {location.name} task_id={async_result.id}"))
+            return
+
         qs = Location.objects.exclude(google_place_id="").order_by("id")
 
         if options["only_pending"]:

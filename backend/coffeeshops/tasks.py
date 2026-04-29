@@ -73,7 +73,6 @@ def _save_ai_profile(location: Location, combined_reviews: list[dict]) -> dict:
         "location_name": location.name,
         "profile_id": profile.id,
         "status": "done",
-        "reviews": combined_reviews,
         "generation_source": profile_payload.get("generation_source", "unknown"),
         "generation_error": generation_error,
     }
@@ -82,22 +81,29 @@ def _save_ai_profile(location: Location, combined_reviews: list[dict]) -> dict:
 @shared_task(bind=True, queue="coffeeshops")
 def process_location_profile_task(self, location_id: int) -> dict:
     location = Location.objects.get(id=location_id)
-    combined_reviews = _collect_reviews(location)
-    async_result = generate_ai_profile_task.delay(location.id, combined_reviews)
+    async_result = generate_ai_profile_task.delay(location.id)
 
     return {
         "location_id": location.id,
         "location_name": location.name,
         "status": "queued",
-        "reviews": combined_reviews,
         "generate_task_id": async_result.id,
-        "review_count": len(combined_reviews),
     }
 
 
-@shared_task(bind=True, queue="gemini")
-def generate_ai_profile_task(self, location_id: int, combined_reviews: list[dict]) -> dict:
+@shared_task(
+    bind=True,
+    queue="gemini",
+    rate_limit="10/m",
+    autoretry_for=(Exception,),
+    retry_backoff=10,
+    retry_backoff_max=120,
+    max_retries=3,
+    retry_kwargs={"countdown": 10},
+)
+def generate_ai_profile_task(self, location_id: int) -> dict:
     location = Location.objects.get(id=location_id)
+    combined_reviews = _collect_reviews(location)
     profile_payload = _save_ai_profile(location, combined_reviews)
 
     return {
@@ -105,7 +111,7 @@ def generate_ai_profile_task(self, location_id: int, combined_reviews: list[dict
         "location_name": location.name,
         "profile_id": profile_payload["profile_id"],
         "status": profile_payload["status"],
-        "reviews": combined_reviews,
+        "review_count": len(combined_reviews),
         "generation_source": profile_payload.get("generation_source", "unknown"),
         "generation_error": profile_payload.get("generation_error", ""),
     }

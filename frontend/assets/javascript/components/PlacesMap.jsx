@@ -178,8 +178,13 @@ function buildMarkerElement(location, isSelected) {
 
   content.innerHTML =
     `<div style="font-weight:700;font-size:13px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;">` +
-      `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${location.name}</span>` +
-      `<span style="flex-shrink:0;margin-left:8px;">${overallRating}</span>` +
+    `<div style="display:flex;align-items:center;overflow:hidden;">` +
+    `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${location.name}</span>` +
+    `<span style="flex-shrink:0;margin-left:8px;margin-right:8px;">${overallRating}</span>` +
+    `</div>` +
+    `<button class="close-marker-btn" style="background:none;border:none;color:#fff;cursor:pointer;padding:2px 0 2px 4px;margin:0;display:flex;align-items:center;opacity:0.8;" aria-label="Close">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>` +
+    `</button>` +
     `</div>` +
     (subRatings ? `<div>${subRatings}</div>` : '');
 
@@ -234,24 +239,91 @@ function getLocationsCenter(locations) {
   return [totals.longitude / totals.count, totals.latitude / totals.count];
 }
 
+function fitMapToLocations(map, locationsToFit, { padding = 60, maxZoom = 17, sidebarOffset = 140 } = {}) {
+  if (!map || !locationsToFit.length) return;
+
+  if (locationsToFit.length === 1) {
+    const loc = locationsToFit[0];
+    const lng = Number(loc.coordinates?.longitude);
+    const lat = Number(loc.coordinates?.latitude);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      map.flyTo({
+        center: [lng, lat],
+        zoom: maxZoom,
+        speed: 1.4,
+        curve: 1.42,
+        essential: true,
+        offset: [-sidebarOffset, 0],
+      });
+    }
+    return;
+  }
+
+  const bounds = new mapboxgl.LngLatBounds();
+  for (const loc of locationsToFit) {
+    const lng = Number(loc.coordinates?.longitude);
+    const lat = Number(loc.coordinates?.latitude);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      bounds.extend([lng, lat]);
+    }
+  }
+
+  if (!bounds.isEmpty()) {
+    map.fitBounds(bounds, {
+      padding: { top: padding, bottom: padding, left: padding + sidebarOffset, right: padding },
+      maxZoom,
+      speed: 1.4,
+      essential: true,
+    });
+  }
+}
+
 export function PlacesMap() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map());
   const popupRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const searchLabelRefs = useRef([]);
 
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  // Debounce: update debouncedQuery 300ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim() || '';
   const selectedLocation = useMemo(
     () => locations.find((location) => location.id === selectedLocationId) || null,
     [locations, selectedLocationId],
   );
+
+  const filteredLocationIds = useMemo(() => {
+    const query = debouncedQuery.trim().toLowerCase();
+    if (!query) return null;
+    return new Set(
+      locations
+        .filter((loc) => loc.name?.toLowerCase().includes(query) || loc.address?.toLowerCase().includes(query))
+        .map((loc) => loc.id),
+    );
+  }, [locations, debouncedQuery]);
+
+  const filteredLocations = useMemo(() => {
+    if (!filteredLocationIds) return locations;
+    return locations.filter((loc) => filteredLocationIds.has(loc.id));
+  }, [locations, filteredLocationIds]);
+
+  const isSearchActive = filteredLocationIds !== null;
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -375,7 +447,11 @@ export function PlacesMap() {
       element.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        setSelectedLocationId(location.id);
+        if (event.target.closest('.close-marker-btn')) {
+          setSelectedLocationId(null);
+        } else {
+          setSelectedLocationId(location.id);
+        }
       });
 
       const marker = new mapboxgl.Marker({ element, anchor: 'center' })
@@ -403,12 +479,13 @@ export function PlacesMap() {
     });
   }, [locations]);
 
+  // Selection: apply marker style + fly to
   useEffect(() => {
     markerRefs.current.forEach(({ marker, element, location }, locationId) => {
       const isSelected = locationId === selectedLocationId;
       applyMarkerStyle(element, element.firstChild, location, isSelected);
 
-      if (isSelected && mapRef.current) {
+      if (isSelected && mapRef.current && !isSearchActive) {
         mapRef.current.flyTo({
           center: marker.getLngLat(),
           speed: 1.2,
@@ -417,7 +494,88 @@ export function PlacesMap() {
         });
       }
     });
-  }, [selectedLocationId]);
+  }, [selectedLocationId, isSearchActive]);
+
+  // Search focus: opacity + pin size + floating labels
+  useEffect(() => {
+    // Clean up previous labels
+    searchLabelRefs.current.forEach((m) => m.remove());
+    searchLabelRefs.current = [];
+
+    markerRefs.current.forEach(({ marker, element, location }, locationId) => {
+      const isSelected = locationId === selectedLocationId;
+
+      if (isSearchActive) {
+        const isMatch = filteredLocationIds.has(locationId);
+        element.style.opacity = isMatch ? '1' : '0.15';
+        element.style.pointerEvents = isMatch ? 'auto' : 'none';
+        element.style.transition = 'opacity 0.35s ease';
+
+        // Scale matched collapsed pins bigger via width/height
+        if (isMatch && !isSelected) {
+          element.style.width = '28px';
+          element.style.height = '28px';
+          element.style.minHeight = '28px';
+
+          // Add floating name label as a separate Mapbox marker
+          if (mapRef.current && filteredLocationIds.size <= 5) {
+            const labelEl = document.createElement('div');
+            Object.assign(labelEl.style, {
+              padding: '3px 8px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(0,0,0,0.78)',
+              color: '#fff',
+              fontSize: '11px',
+              fontWeight: '600',
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+              lineHeight: '1.3',
+            });
+            labelEl.textContent = location.name;
+
+            const lngLat = marker.getLngLat();
+            const labelMarker = new mapboxgl.Marker({ element: labelEl, anchor: 'bottom' })
+              .setLngLat(lngLat)
+              .setOffset([0, -22])
+              .addTo(mapRef.current);
+
+            searchLabelRefs.current.push(labelMarker);
+          }
+        } else if (!isSelected) {
+          element.style.width = '20px';
+          element.style.height = '20px';
+          element.style.minHeight = '20px';
+        }
+      } else {
+        element.style.opacity = '1';
+        element.style.pointerEvents = 'auto';
+        element.style.transition = 'opacity 0.35s ease';
+
+        // Restore default collapsed size if not selected
+        if (!isSelected) {
+          element.style.width = '20px';
+          element.style.height = '20px';
+          element.style.minHeight = '20px';
+        }
+      }
+    });
+
+    return () => {
+      searchLabelRefs.current.forEach((m) => m.remove());
+      searchLabelRefs.current = [];
+    };
+  }, [selectedLocationId, isSearchActive, filteredLocationIds]);
+
+  // Fit map when search results change
+  useEffect(() => {
+    if (!isSearchActive || !mapRef.current) return;
+    fitMapToLocations(mapRef.current, filteredLocations);
+
+    // If exactly one result, auto-select it
+    if (filteredLocations.length === 1) {
+      setSelectedLocationId(filteredLocations[0].id);
+    }
+  }, [filteredLocations, isSearchActive]);
 
   if (!mapboxToken) {
     return (
@@ -447,9 +605,53 @@ export function PlacesMap() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.7fr)]">
         <section className="overflow-hidden rounded-3xl border bg-card shadow-sm">
-          <div className="border-b px-4 py-3">
-            <p className="text-sm font-semibold">Map view</p>
-            <p className="text-xs text-muted-foreground">Markers show the café name. Select one to see its ratings.</p>
+          <div className="border-b px-4 py-3 flex items-center justify-between gap-3">
+            <div className="shrink-0">
+              <p className="text-sm font-semibold">Map view</p>
+              <p className="text-xs text-muted-foreground">
+                {isSearchActive
+                  ? `${filteredLocations.length} result${filteredLocations.length !== 1 ? 's' : ''} found`
+                  : 'Markers show the café name. Select one to see its ratings.'}
+              </p>
+            </div>
+
+            <div className="relative w-full max-w-xs">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="15" height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                id="cafe-search"
+                type="text"
+                placeholder="Search cafés..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border bg-background py-2 pl-9 pr-9 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 transition-shadow"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear search"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="relative min-h-[68vh] bg-slate-100">
@@ -462,28 +664,105 @@ export function PlacesMap() {
           </div>
         </section>
 
-        <aside className="rounded-3xl border bg-card p-5 shadow-sm">
-          <div className="mb-4">
+        <aside className="rounded-3xl border bg-card p-6 shadow-sm flex flex-col relative overflow-hidden">
+          <style>{`
+            @keyframes slideUpFade {
+              0% { opacity: 0; transform: translateY(15px); }
+              100% { opacity: 1; transform: translateY(0); }
+            }
+            .animate-slide-up {
+              animation: slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+            @keyframes fillBar {
+              from { transform: scaleX(0); }
+              to { transform: scaleX(1); }
+            }
+            .score-bar-fill {
+              transform-origin: left;
+              animation: fillBar 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+          `}</style>
+
+          <div className="mb-5">
             <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Selected place</p>
-            <h2 className="mt-1 text-xl font-semibold">{selectedLocation?.name || 'Pick a café'}</h2>
           </div>
 
           {selectedLocation ? (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">{selectedLocation.address || 'No address available'}</p>
+            <div key={selectedLocation.id} className="flex-1 space-y-6">
+              {/* Header Info */}
+              <div className="animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground leading-tight">
+                      {selectedLocation.name}
+                    </h2>
+                    <p className="mt-2 text-sm text-muted-foreground flex items-start gap-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+                      {selectedLocation.address || 'No address available'}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-center justify-center rounded-2xl bg-primary/5 px-4 py-2 border border-primary/10 shadow-sm">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Rating</span>
+                    <span className="text-2xl font-black" style={{ color: getMarkerColor(selectedLocation.aggregate_profile?.overall_rating) }}>
+                      {formatScore(selectedLocation.aggregate_profile?.overall_rating)}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="rounded-2xl border bg-background p-4">
-                <p className="text-sm font-semibold">Overview</p>
-                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                  {selectedLocation.aggregate_profile?.ai_description || 'No description available yet.'}
-                </p>
+              {/* Sub-ratings */}
+              <div className="animate-slide-up opacity-0" style={{ animationDelay: '100ms' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Vibe & Environment</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {getSelectedSummary(selectedLocation)?.filter(item => item.label !== 'Overall').map((item) => {
+                    const score = Number(item.value);
+                    const percentage = isNaN(score) ? 0 : (score / 5) * 100;
+                    return (
+                      <div key={item.label} className="rounded-2xl border bg-muted/20 p-3 shadow-sm transition-colors hover:bg-muted/40">
+                        <div className="flex justify-between items-end mb-2.5">
+                          <span className="text-xs font-semibold text-muted-foreground">{item.label}</span>
+                          <span className="text-sm font-black">{item.value}</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                          <div
+                            className="h-full rounded-full score-bar-fill"
+                            style={{
+                              width: `${percentage}%`,
+                              backgroundColor: getMarkerColor(score),
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* AI Overview */}
+              <div className="animate-slide-up opacity-0" style={{ animationDelay: '200ms' }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">AI Overview</p>
+                <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/5 to-muted/30 p-5 shadow-sm">
+                  {/* Subtle AI sparkle icon in background */}
+                  <svg className="absolute -right-2 -top-2 h-16 w-16 text-primary/10 rotate-12" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11.644 1.517a.75.75 0 0 1 .712 0l9.75 5.25a.75.75 0 0 1 0 1.326l-9.75 5.25a.75.75 0 0 1-.712 0l-9.75-5.25a.75.75 0 0 1 0-1.326l9.75-5.25Z" />
+                    <path d="m3.265 10.602 7.668 4.129a2.25 2.25 0 0 0 2.134 0l7.668-4.13-1.065.573-6.603 3.556a.75.75 0 0 1-.712 0l-6.603-3.556-1.065-.572Z" />
+                    <path d="m3.265 13.602 7.668 4.129a2.25 2.25 0 0 0 2.134 0l7.668-4.13-1.065.573-6.603 3.556a.75.75 0 0 1-.712 0l-6.603-3.556-1.065-.572Z" />
+                  </svg>
+                  <p className="relative z-10 text-sm leading-relaxed text-foreground/90 font-medium">
+                    {selectedLocation.aggregate_profile?.AIdescription || selectedLocation.aggregate_profile?.ai_description || 'No description available yet. Try requesting an AI analysis.'}
+                  </p>
+                </div>
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed bg-muted/30 p-6 text-sm text-muted-foreground">
-              Select a café on the map to reveal its ratings and AI summary.
+            <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-4 rounded-2xl border border-dashed bg-muted/10 p-8 text-center text-muted-foreground animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>
+              <div className="rounded-full bg-secondary/80 p-4 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-base font-semibold text-foreground">No café selected</p>
+                <p className="text-sm">Click any marker on the map to see its AI ratings and vibe analysis.</p>
+              </div>
             </div>
           )}
         </aside>

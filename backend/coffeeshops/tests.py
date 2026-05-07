@@ -3,10 +3,11 @@ from types import SimpleNamespace
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
+from django.conf import settings
 
 from coffeeshops.models import AIAggregateProfile, Location
 from coffeeshops.services.ai_profile_service import build_ai_profile_from_reviews
-from coffeeshops.tasks import generate_ai_profile_task, process_location_profile_task
+from coffeeshops.tasks import process_location_profile_task, fetch_reviews_task, score_location_task
 
 
 class AIProfileServiceTests(TestCase):
@@ -17,12 +18,12 @@ class AIProfileServiceTests(TestCase):
 			address="123 Library St",
 		)
 
-	@override_settings(GEMINI_API_KEY="")
-	def test_build_ai_profile_uses_fallback_without_gemini(self):
+	@override_settings(OLLAMA_HOST="")
+	def test_build_ai_profile_uses_fallback_without_ollama(self):
 		payload = {
 			"reviews": [
-				{"author": "Ana", "rating": 4, "text": "Quiet and good for laptops."},
-				{"author": "Mihai", "rating": 2, "text": "A bit noisy at lunch."},
+				{"author": "Ana", "text": "Quiet and good for laptops."},
+				{"author": "Mihai", "text": "A bit noisy at lunch."},
 			]
 		}
 
@@ -30,15 +31,14 @@ class AIProfileServiceTests(TestCase):
 
 		self.assertEqual(
 			profile["AIdescription"],
-			"Gemini profile unavailable for Study Cafe.",
+			"AI profile unavailable for Study Cafe.",
 		)
 		self.assertEqual(profile["laptop_friendly"], 0.0)
 		self.assertEqual(profile["study_friendly"], 0.0)
-		self.assertEqual(profile["overall_rating"], 0.0)
 		self.assertEqual(profile["noise_level"], 0.0)
 		self.assertEqual(profile["overall_corwdness"], 0.0)
 		self.assertEqual(profile["generation_source"], "fallback")
-		self.assertIn("GEMINI_API_KEY", profile["generation_error"])
+		self.assertIn("OLLAMA_HOST", profile["generation_error"])
 
 
 class ProcessLocationProfileTaskTests(TestCase):
@@ -50,12 +50,11 @@ class ProcessLocationProfileTaskTests(TestCase):
 			address="45 Study Ave",
 		)
 
-	def test_process_location_profile_merges_google_and_app_reviews(self):
-		google_reviews_payload = {
+	def test_process_location_profile_merges_apify_and_app_reviews(self):
+		apify_reviews_payload = {
 			"reviews": [
 				{
 					"author": "Google User",
-					"rating": 4,
 					"text": "Good Wi-Fi and plenty of outlets.",
 					"relative_time": "2 weeks ago",
 				}
@@ -65,7 +64,6 @@ class ProcessLocationProfileTaskTests(TestCase):
 			{
 				"source": "app",
 				"author": self.user.username,
-				"rating": 5,
 				"relative_time": "2026-04-28T12:00:00Z",
 				"text": "Great for studying.",
 			}
@@ -73,17 +71,14 @@ class ProcessLocationProfileTaskTests(TestCase):
 
 		captured_payload = {}
 
-		with patch("coffeeshops.tasks.fetch_google_reviews", return_value=google_reviews_payload), patch(
-			"coffeeshops.tasks._serialize_user_reviews",
-			return_value=app_reviews,
-		), patch(
-			"coffeeshops.tasks.generate_ai_profile_task.delay",
+		with patch(
+			"coffeeshops.tasks.fetch_reviews_task.delay",
 			return_value=SimpleNamespace(id="task-123"),
 		):
 			result = process_location_profile_task.run(self.location.id)
 
 		self.assertEqual(result["status"], "queued")
-		self.assertEqual(result["generate_task_id"], "task-123")
+		self.assertEqual(result["fetch_task_id"], "task-123")
 
 		def fake_build_ai_profile_from_reviews(location, reviews_payload):
 			captured_payload["location_id"] = location.id
@@ -94,27 +89,24 @@ class ProcessLocationProfileTaskTests(TestCase):
 				"study_friendly": 4.5,
 				"overall_corwdness": 2.0,
 				"noise_level": 2.5,
-				"overall_rating": 4.0,
-				"generation_source": "gemini",
+				"generation_source": f"ollama-{settings.OLLAMA_MODEL}",
 				"generation_error": "",
 			}
 
 		with patch(
 			"coffeeshops.tasks.build_ai_profile_from_reviews",
 			side_effect=fake_build_ai_profile_from_reviews,
-		), patch(
-			"coffeeshops.tasks.fetch_google_reviews",
-			return_value=google_reviews_payload,
-		), patch(
-			"coffeeshops.tasks._serialize_user_reviews",
-			return_value=app_reviews,
 		):
-			generate_result = generate_ai_profile_task.run(self.location.id)
+			combined_reviews = [
+				{**apify_reviews_payload["reviews"][0], "source": "google"},
+				app_reviews[0]
+			]
+			generate_result = score_location_task.run(self.location.id, combined_reviews)
 
 		self.assertEqual(captured_payload["location_id"], self.location.id)
 		self.assertEqual(len(captured_payload["reviews"]), 2)
 		self.assertEqual(generate_result["status"], "done")
-		self.assertEqual(generate_result["generation_source"], "gemini")
+		self.assertEqual(generate_result["generation_source"], f"ollama-{settings.OLLAMA_MODEL}")
 		self.assertEqual(generate_result["generation_error"], "")
 
 		profile = AIAggregateProfile.objects.get(location=self.location)
@@ -123,4 +115,4 @@ class ProcessLocationProfileTaskTests(TestCase):
 		self.assertEqual(profile.study_friendly, 4.5)
 		self.assertEqual(profile.overall_corwdness, 2.0)
 		self.assertEqual(profile.noise_level, 2.5)
-		self.assertEqual(profile.overall_rating, 4.0)
+		self.assertEqual(profile.overall_rating, 3.5)

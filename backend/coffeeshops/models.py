@@ -62,12 +62,12 @@ class AIAggregateProfile(models.Model):
 		db_table = "app_aiaggregateprofile"
 	
 	def update_overall_rating(self):
-		self.overall_rating = (
-			self.laptop_friendly
-			+ self.study_friendly
-			+ self.overall_corwdness
-			+ self.noise_level
-		) / 4
+		self.overall_rating = round(
+			self.study_friendly    * 0.35
+			+ self.noise_level     * 0.35
+			+ self.laptop_friendly * 0.25
+			+ self.overall_corwdness * 0.05
+		, 1)
 		self.save(update_fields=["overall_rating"])
 		return self.overall_rating
 
@@ -78,14 +78,12 @@ class AIAggregateProfile(models.Model):
 		study_friendly: float,
 		overall_crowdness: float,
 		noise_level: float,
-		overall_rating: float,
 	) -> bool:
 		ratings = {
 			"laptop_friendly": laptop_friendly,
 			"study_friendly": study_friendly,
 			"overall_corwdness": overall_crowdness,
 			"noise_level": noise_level,
-			"overall_rating": overall_rating,
 		}
 
 		for field_name, rating in ratings.items():
@@ -98,9 +96,11 @@ class AIAggregateProfile(models.Model):
 		self.study_friendly = float(study_friendly)
 		self.overall_corwdness = float(overall_crowdness)
 		self.noise_level = float(noise_level)
-		self.overall_rating = float(overall_rating)
 		self.save()
+
+		self.update_overall_rating()
 		return True
 
 	def __str__(self):
 		return f"Aggregate Profile (Overall: {self.overall_rating:.1f})"
+

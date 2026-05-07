@@ -3,13 +3,10 @@ import logging
 import re
 import time
 
+import requests
 from django.conf import settings
-from coffeeshops.models import Location
 
-try:
-    import google.generativeai as genai
-except ImportError:
-    genai = None
+from coffeeshops.models import Location
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +19,7 @@ def _clamp_score(value, default=2.5):
         score = float(value)
     except (TypeError, ValueError):
         return default
-    return max(0.0, min(5.0, score))
+    return round(max(0.0, min(5.0, score)), 1)
 
 
 def _extract_json_object(text: str) -> dict:
@@ -34,82 +31,94 @@ def _extract_json_object(text: str) -> dict:
     end = clean_text.rfind("}")
     if start != -1 and end != -1 and end > start:
         clean_text = clean_text[start : end + 1]
+    if not clean_text:
+        raise ValueError("No JSON object found in Ollama response (response was empty after extraction)")
     return json.loads(clean_text)
 
 
 def _build_fallback_profile(location: Location, reviews: list[dict], error_message: str) -> dict:
     return {
-        "AIdescription": f"Gemini profile unavailable for {location.name}.",
+        "AIdescription": f"AI profile unavailable for {location.name}.",
         "laptop_friendly": 0.0,
         "study_friendly": 0.0,
         "overall_corwdness": 0.0,
         "noise_level": 0.0,
-        "overall_rating": 0.0,
         "generation_source": "fallback",
         "generation_error": error_message,
     }
 
 
-def _get_model(api_key: str, model_name: str):
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(model_name)
+def _call_ollama(prompt: str, location_id: int) -> str:
+    """
+    Call the local Ollama instance with retry logic.
 
+    Sends a POST to ``{OLLAMA_HOST}/api/generate`` and returns the raw
+    response text.  Retries transient failures up to ``_MAX_RETRIES`` times
+    with exponential back-off.
+    """
+    ollama_host = settings.OLLAMA_HOST.rstrip("/")
+    ollama_model = settings.OLLAMA_MODEL
+    url = f"{ollama_host}/api/generate"
 
-def _call_gemini_with_retry(model, prompt: str, location_id: int) -> str:
     last_exc = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             logger.info(
-                "Gemini API call attempt %d/%d for location %s",
-                attempt, _MAX_RETRIES, location_id,
+                "Ollama API call attempt %d/%d for location %s (model=%s)",
+                attempt, _MAX_RETRIES, location_id, ollama_model,
             )
-            response = model.generate_content(prompt)
+            resp = requests.post(
+                url,
+                json={
+                    "model": ollama_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": {
+                        "type": "object",
+                        "properties": {
+                            "AIdescription": {"type": "string"},
+                            "laptop_friendly": {"type": "number"},
+                            "study_friendly": {"type": "number"},
+                            "overall_corwdness": {"type": "number"},
+                            "noise_level": {"type": "number"},
+                        },
+                        "required": [
+                            "AIdescription",
+                            "laptop_friendly",
+                            "study_friendly",
+                            "overall_corwdness",
+                            "noise_level",
+                        ],
+                    },
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
 
-            if not response:
-                raise RuntimeError("Gemini returned a None response object")
-
-            if hasattr(response, "prompt_feedback") and response.prompt_feedback:
-                block_reason = getattr(response.prompt_feedback, "block_reason", None)
-                if block_reason:
-                    raise RuntimeError(
-                        f"Gemini blocked the prompt (reason: {block_reason})"
-                    )
-
-            text = getattr(response, "text", None)
+            data = resp.json()
+            text = data.get("response", "").strip()
+            logger.debug(
+                "Ollama raw response for location %s (length=%d): %s",
+                location_id, len(text), text[:500],
+            )
             if not text:
-                candidates = getattr(response, "candidates", None)
-                if candidates:
-                    finish_reason = getattr(candidates[0], "finish_reason", None)
-                    raise RuntimeError(
-                        f"Gemini returned empty text (finish_reason: {finish_reason}, "
-                        f"candidates: {len(candidates)})"
-                    )
-                raise RuntimeError("Gemini returned an empty response with no text")
+                raise RuntimeError(
+                    f"Ollama returned an empty response (keys: {list(data.keys())})"
+                )
 
             logger.info(
-                "Gemini API call succeeded for location %s on attempt %d (response length: %d chars)",
+                "Ollama API call succeeded for location %s on attempt %d "
+                "(response length: %d chars)",
                 location_id, attempt, len(text),
             )
             return text
 
         except Exception as exc:
             last_exc = exc
-            exc_str = str(exc)
             logger.warning(
-                "Gemini API attempt %d/%d failed for location %s: %s: %s",
-                attempt, _MAX_RETRIES, location_id, type(exc).__name__, exc_str,
+                "Ollama API attempt %d/%d failed for location %s: %s: %s",
+                attempt, _MAX_RETRIES, location_id, type(exc).__name__, exc,
             )
-
-            is_non_transient = any(keyword in exc_str.lower() for keyword in [
-                "invalid api key", "api_key_invalid", "permission denied",
-                "blocked", "safety", "not found",
-            ])
-            if is_non_transient:
-                logger.error(
-                    "Non-transient Gemini error for location %s, skipping retries: %s",
-                    location_id, exc_str,
-                )
-                raise
 
             if attempt < _MAX_RETRIES:
                 delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
@@ -120,6 +129,14 @@ def _call_gemini_with_retry(model, prompt: str, location_id: int) -> str:
 
 
 def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> dict:
+    """
+    Build an AI profile by sending review text to the local Ollama model.
+
+    The model is asked to return four dimension scores on a 0–5 scale plus a
+    short description.  ``overall_rating`` is intentionally excluded — it is
+    computed downstream by ``AIAggregateProfile.update_overall_rating()``
+    with study-focused weighting.
+    """
     reviews = reviews_payload.get("reviews", []) or []
     if not isinstance(reviews, list):
         reviews = []
@@ -128,56 +145,80 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
     for review in reviews:
         author = (review.get("author") or "").strip()
         text = (review.get("text") or "").strip()
-        rating = review.get("rating")
         if text:
             source = (review.get("source") or "external").strip()
             review_lines.append(
-                f"Source: {source}\nAuthor: {author}\nRating: {rating}\nReview: {text}"
+                f"Source: {source}\nAuthor: {author}\nReview: {text}"
             )
 
     prompt = (
-         "You are generating a structured cafe profile from reviews.\n"
-        "Return ONLY valid JSON with these keys:\n"
-        "AIdescription, laptop_friendly, study_friendly, overall_corwdness, noise_level, overall_rating.\n"
-        "Each numeric score must be from 0 (Poor/Bad) to 5 (Excellent/Perfect).\n"
-        "For noise_level: 5 means Very Quiet/Silent, 0 means Extremely Noisy.\n"
-        "For overall_corwdness: 5 means Very Spacious/Empty, 0 means Extremely Crowded.\n"
-        "Use the reviews to infer these scores.\n"
+        "You are generating a structured cafe profile from customer reviews.\n"
+        "This app helps university students find good study spots.\n\n"
+        "Return ONLY valid JSON with exactly these keys:\n"
+        "  AIdescription, laptop_friendly, study_friendly, overall_corwdness, noise_level\n\n"
+        "CRITICAL: All scores MUST use ONE DECIMAL PLACE (e.g., 3.7, 2.4, 4.1).\n"
+        "Prefer granular scores (non-whole numbers) — use whole numbers (1.0, 2.0, 3.0, 4.0, 5.0) sparingly, only when the review evidence is extremely clear-cut.\n\n"
+        "Score definitions (0.0 to 5.0):\n"
+        "  laptop_friendly — How suitable is this place for working on a laptop?\n"
+        "    4.8-5.0 = excellent: multiple outlets, spacious tables, fast stable WiFi\n"
+        "    4.0-4.7 = good: most spots have power, decent tables, solid WiFi\n"
+        "    3.0-3.9 = moderate: some outlets, limited seating for laptops\n"
+        "    1.5-2.9 = poor: few outlets or unstable WiFi, cramped\n"
+        "    0.0-1.4 = terrible: no outlets, tiny tables, no WiFi\n"
+        "  study_friendly — How good is this place for studying or focused work?\n"
+        "    4.8-5.0 = excellent: quiet, respectful patrons, long-stay friendly\n"
+        "    4.0-4.7 = good: mostly quiet, welcoming to students\n"
+        "    3.0-3.9 = moderate: occasional noise, mixed environment\n"
+        "    1.5-2.9 = poor: consistently loud, not welcoming\n"
+        "    0.0-1.4 = terrible: loud music, rushed service, not for studying\n"
+        "  overall_corwdness — How spacious and uncrowded does this place feel?\n"
+        "    4.8-5.0 = excellent: very spacious, always easy to find seating\n"
+        "    4.0-4.7 = good: spacious enough, rarely crowded\n"
+        "    3.0-3.9 = moderate: normal foot traffic, sometimes hard to find seats\n"
+        "    1.5-2.9 = poor: often crowded, limited seating availability\n"
+        "    0.0-1.4 = terrible: perpetually packed, barely room to stand\n"
+        "  noise_level — How quiet is this place? (inverse of busyness)\n"
+        "    4.8-5.0 = excellent: library-like silence, minimal background noise\n"
+        "    4.0-4.7 = good: quiet, only soft background conversations\n"
+        "    3.0-3.9 = moderate: average cafe noise, somewhat distracting\n"
+        "    1.5-2.9 = poor: noticeably loud, music, hard to concentrate\n"
+        "    0.0-1.4 = terrible: extremely noisy, impossible to concentrate\n\n"
+        "AIdescription — Summary of all reviews, focus on presenting the place for study enjoyers (BETWEEN 180 - 220 CHARACTERS).\n"
+        "It is CRITICAL that you do not exceed this limit, or the text will be cut off.\n\n"
         "Be consistent, conservative, and deterministic.\n"
+        "If reviews are insufficient for a dimension, default to 2.5.\n"
+        "Always round scores to ONE decimal place (e.g., 3.4, not 3.33 or 3).\n\n"
         f"Location name: {location.name}\n"
         f"Address: {location.address}\n\n"
         "Reviews:\n"
-        + ("\n\n".join(review_lines[:10]) if review_lines else "No reviews were provided.")
+        + ("\n\n".join(review_lines[:100]) if review_lines else "No reviews were provided.")
     )
 
-    api_key = getattr(settings, "GEMINI_API_KEY", "").strip()
-    model_name = settings.GEMINI_MODEL
-
-    if not api_key or genai is None:
-        error_message = "GEMINI_API_KEY is missing" if not api_key else "google.generativeai is not installed"
-        logger.error("Gemini unavailable for location %s: %s", location.id, error_message)
+    ollama_host = settings.OLLAMA_HOST.strip()
+    if not ollama_host:
+        error_message = "OLLAMA_HOST is not configured"
+        logger.error("Ollama unavailable for location %s: %s", location.id, error_message)
         return _build_fallback_profile(location, reviews, error_message)
 
     try:
-        model = _get_model(api_key, model_name)
-        response_text = _call_gemini_with_retry(model, prompt, location.id)
+        response_text = _call_ollama(prompt, location.id)
         data = _extract_json_object(response_text)
     except Exception as exc:
         logger.exception(
-            "Gemini profile generation FAILED for location %s (%s) after all retries: %s: %s",
+            "Ollama profile generation FAILED for location %s (%s) after all retries: %s: %s",
             location.id, location.name, type(exc).__name__, exc,
         )
         return _build_fallback_profile(location, reviews, str(exc))
 
     if not isinstance(data, dict):
-        error_message = "Gemini response was not a JSON object"
-        logger.error("Gemini profile generation failed for location %s: %s", location.id, error_message)
+        error_message = "Ollama response was not a JSON object"
+        logger.error("AI profile generation failed for location %s: %s", location.id, error_message)
         return _build_fallback_profile(location, reviews, error_message)
 
     logger.info(
         "Successfully generated AI profile for location %s (%s): scores=%s",
         location.id, location.name,
-        {k: data.get(k) for k in ["laptop_friendly", "study_friendly", "noise_level", "overall_rating"]},
+        {k: data.get(k) for k in ["laptop_friendly", "study_friendly", "noise_level", "overall_corwdness"]},
     )
 
     return {
@@ -186,7 +227,6 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
         "study_friendly": _clamp_score(data.get("study_friendly")),
         "overall_corwdness": _clamp_score(data.get("overall_corwdness")),
         "noise_level": _clamp_score(data.get("noise_level")),
-        "overall_rating": _clamp_score(data.get("overall_rating")),
-        "generation_source": "gemini",
+        "generation_source": f"ollama-{settings.OLLAMA_MODEL}",
         "generation_error": "",
     }

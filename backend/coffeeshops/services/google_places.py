@@ -1,3 +1,13 @@
+"""
+Google Places API helpers for **place discovery** (nearby search).
+
+NOTE: This module is NOT used for fetching reviews in the AI profile
+pipeline — that is handled by ``apify_reviews.py`` which retrieves up
+to 40 reviews per place via the Apify platform.  The functions here
+are kept for finding new coffee shops by coordinates
+(``fetch_places_for_center``) and for one-off review lookups if needed.
+"""
+
 import json
 import logging
 import os

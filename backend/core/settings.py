@@ -32,6 +32,17 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 GEMINI_ESCALATION_CONFIDENCE_THRESHOLD = float(os.environ.get("GEMINI_ESCALATION_CONFIDENCE_THRESHOLD", "0.62"))
 GEMINI_ESCALATION_MIN_BLOCKS = int(os.environ.get("GEMINI_ESCALATION_MIN_BLOCKS", "4"))
 
+# Get your token at: https://apify.com → Settings → Integrations → API Tokens
+APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "").strip()
+APIFY_REVIEWS_ACTOR_ID = os.environ.get(
+    "APIFY_REVIEWS_ACTOR_ID", "compass/crawler-google-places"
+).strip()
+APIFY_MAX_REVIEWS_PER_PLACE = int(os.environ.get("APIFY_MAX_REVIEWS_PER_PLACE", "100"))
+
+# Ollama Configuration — local LLM for AI profile scoring
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").strip()
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2").strip()
+
 SCHEDULE_LAYOUT_PIPELINE_MODE = os.environ.get("SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled").strip().lower()
 if SCHEDULE_LAYOUT_PIPELINE_MODE not in {"disabled", "shadow", "active"}:
     SCHEDULE_LAYOUT_PIPELINE_MODE = "disabled"
@@ -194,7 +205,8 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TASK_ROUTES = {
     'coffeeshops.tasks.process_location_profile_task': {'queue': 'coffeeshops'},
-    'coffeeshops.tasks.generate_ai_profile_task': {'queue': 'gemini'},
+    'coffeeshops.tasks.fetch_reviews_task': {'queue': 'apify'},
+    'coffeeshops.tasks.score_location_task': {'queue': 'ai'},
 }
 
 SPECTACULAR_SETTINGS = {

@@ -96,7 +96,7 @@ def process_location_profile_task(self, location_id: int) -> dict:
 @shared_task(
     bind=True,
     queue="apify",
-    rate_limit="30/m",
+    rate_limit="5/m",
     autoretry_for=(Exception,),
     retry_backoff=10,
     retry_backoff_max=120,

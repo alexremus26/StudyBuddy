@@ -183,7 +183,7 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
         "    3.0-3.9 = moderate: average cafe noise, somewhat distracting\n"
         "    1.5-2.9 = poor: noticeably loud, music, hard to concentrate\n"
         "    0.0-1.4 = terrible: extremely noisy, impossible to concentrate\n\n"
-        "AIdescription — (MAXIMUM 200 CHARACTERS).\n"
+        "AIdescription — Summary of all reviews, focus on presenting the place for study enjoyers (BETWEEN 180 - 220 CHARACTERS).\n"
         "It is CRITICAL that you do not exceed this limit, or the text will be cut off.\n\n"
         "Be consistent, conservative, and deterministic.\n"
         "If reviews are insufficient for a dimension, default to 2.5.\n"

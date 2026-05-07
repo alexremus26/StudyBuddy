@@ -66,7 +66,7 @@ class AIAggregateProfile(models.Model):
 			self.study_friendly    * 0.35
 			+ self.noise_level     * 0.35
 			+ self.laptop_friendly * 0.25
-			+ self.overall_corwdness * 0.15
+			+ self.overall_corwdness * 0.05
 		, 1)
 		self.save(update_fields=["overall_rating"])
 		return self.overall_rating

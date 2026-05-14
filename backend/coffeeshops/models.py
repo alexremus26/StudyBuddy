@@ -40,9 +40,39 @@ class UserFavPlace(models.Model):
 class UserReview(models.Model):
 	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reviews")
 	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="reviews")
-	rating = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
+	laptop_friendly = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
+	study_friendly = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
+	overall_corwdness = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
+	noise_level = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
+	overall_rating = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=0)
 	comment = models.TextField(max_length=255, blank=True, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)
+
+	def update_overall_rating(self, save: bool = True) -> float:
+		self.overall_rating = round(
+			self.study_friendly * 0.35
+			+ self.noise_level * 0.35
+			+ self.laptop_friendly * 0.25
+			+ self.overall_corwdness * 0.05,
+			1,
+		)
+		if save:
+			self.save(update_fields=["overall_rating"])
+		return self.overall_rating
+
+	def save(self, *args, **kwargs):
+		try:
+			self.overall_rating = round(
+				self.study_friendly * 0.35
+				+ self.noise_level * 0.35
+				+ self.laptop_friendly * 0.25
+				+ self.overall_corwdness * 0.05,
+				1,
+			)
+		except Exception:
+			if not isinstance(self.overall_rating, (int, float)):
+				self.overall_rating = 0
+		return super().save(*args, **kwargs)
 
 	class Meta:
 		db_table = "app_userreview"

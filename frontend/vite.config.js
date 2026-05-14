@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: '/static/', 
+  base: process.env.NODE_ENV === 'development' ? '/' : '/static/', 
 
   server: {
     host: true,

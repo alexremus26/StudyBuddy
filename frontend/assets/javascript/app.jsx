@@ -16,6 +16,7 @@ import {
   onInvalidAuthToken,
   updateMyProfile,
 } from './api/client';
+import '../styles/style.css';
 
 function HomeTab({ profile, onGoSchedule, onGoCafes, onLogout }) {
   return (

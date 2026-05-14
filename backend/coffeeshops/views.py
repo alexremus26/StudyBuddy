@@ -1,12 +1,24 @@
 from celery.result import AsyncResult
 from rest_framework import permissions, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from django.db.models import Prefetch
+from django.shortcuts import get_object_or_404
 
-from .models import AIAggregateProfile, Location
-from .serializers import LocationMapSerializer
+from .models import AIAggregateProfile, Location, UserReview, UserFavPlace
+from .serializers import (
+    LocationMapSerializer,
+    UserReviewSerializer,
+    UserFavPlaceSerializer,
+)
+
+
+class LocationReviewPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
 
 
 @api_view(["POST"])
@@ -81,9 +93,63 @@ def location_map_list(request):
             Prefetch(
                 "aggregate_profiles",
                 queryset=AIAggregateProfile.objects.order_by("-created_at"),
-            )
+            ),
+            "reviews",
+            "favorited_by",
         )
     )
 
     serializer = LocationMapSerializer(locations, many=True, context={"request": request})
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([permissions.AllowAny])
+def location_reviews(request, location_id: int):
+    location = get_object_or_404(Location, id=location_id)
+
+    if request.method == 'GET':
+        ordering = request.query_params.get('ordering', '-created_at')
+        if ordering not in {'created_at', '-created_at', 'overall_rating', '-overall_rating'}:
+            ordering = '-created_at'
+
+        reviews = location.reviews.select_related('user', 'user__profile').order_by(ordering, '-id')
+        paginator = LocationReviewPagination()
+        page = paginator.paginate_queryset(reviews, request)
+        serializer = UserReviewSerializer(page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
+
+    if not request.user or not request.user.is_authenticated:
+        return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    existing = location.reviews.filter(user=request.user).order_by('-created_at').first()
+    serializer = UserReviewSerializer(existing, data=request.data, partial=True, context={"request": request})
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    serializer.save(user=request.user, location=location)
+    return Response(serializer.data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def location_favorite(request, location_id: int):
+    location = get_object_or_404(Location, id=location_id)
+
+    if request.method == 'POST':
+        note = request.data.get('custom_note', '')
+        fav, created = UserFavPlace.objects.update_or_create(
+            user=request.user,
+            location=location,
+            defaults={
+                'custom_note': note or '',
+            },
+        )
+        serializer = UserFavPlaceSerializer(fav, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    fav = UserFavPlace.objects.filter(user=request.user, location=location).first()
+    if not fav:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    fav.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

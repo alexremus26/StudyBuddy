@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { listCafeLocations } from '../api/client';
+import { listCafeLocations, createLocationReview, listLocationReviews, createFavorite, deleteFavorite } from '../api/client';
 
 const MAPBOX_STYLES = {
   light: 'mapbox://styles/mapbox/streets-v12',
@@ -23,6 +23,375 @@ function getMarkerColor(rating) {
   if (numericRating < 2) return '#ef4444';
   if (numericRating < 4) return '#22c55e';
   return '#3b82f6';
+}
+
+const REVIEW_FIELDS = [
+  {
+    key: 'laptop_friendly',
+    label: 'Laptop friendly',
+    helperText: 'How well does the space work for laptop time?',
+  },
+  {
+    key: 'study_friendly',
+    label: 'Study friendly',
+    helperText: 'Focus, comfort, and how easy it feels to stay awhile.',
+  },
+  {
+    key: 'overall_corwdness',
+    label: 'Crowdness',
+    helperText: 'How busy or packed the place feels.',
+  },
+  {
+    key: 'noise_level',
+    label: 'Noise level',
+    helperText: 'How loud or calm the room sounds.',
+  },
+];
+
+const EMPTY_REVIEW_DRAFT = {
+  laptop_friendly: 0,
+  study_friendly: 0,
+  overall_corwdness: 0,
+  noise_level: 0,
+  comment: '',
+};
+
+function clampHalfRating(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return Math.min(5, Math.max(0, Math.round(numericValue * 2) / 2));
+}
+
+function createEmptyReviewDraft() {
+  return { ...EMPTY_REVIEW_DRAFT };
+}
+
+function reviewToDraft(review) {
+  return {
+    laptop_friendly: clampHalfRating(review?.laptop_friendly ?? 0),
+    study_friendly: clampHalfRating(review?.study_friendly ?? 0),
+    overall_corwdness: clampHalfRating(review?.overall_corwdness ?? 0),
+    noise_level: clampHalfRating(review?.noise_level ?? 0),
+    comment: review?.comment ?? '',
+  };
+}
+
+function getReviewPreviewRating(draft) {
+  return clampHalfRating(
+    (Number(draft?.study_friendly ?? 0) * 0.35)
+    + (Number(draft?.noise_level ?? 0) * 0.35)
+    + (Number(draft?.laptop_friendly ?? 0) * 0.25)
+    + (Number(draft?.overall_corwdness ?? 0) * 0.05),
+  );
+}
+
+function getPageNumberFromUrl(url) {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    return Number(new URL(url, window.location.origin).searchParams.get('page')) || null;
+  } catch {
+    return null;
+  }
+}
+
+function StarRatingRow({ id, label, helperText, value, onChange }) {
+  const safeValue = clampHalfRating(value);
+
+  const handleStarClick = (event, starIndex) => {
+    const starBounds = event.currentTarget.getBoundingClientRect();
+    const clickedOnLeftHalf = event.clientX - starBounds.left < starBounds.width / 2;
+    onChange(clampHalfRating(starIndex + (clickedOnLeftHalf ? 0.5 : 1)));
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      onChange(clampHalfRating(safeValue + 0.5));
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      onChange(clampHalfRating(safeValue - 0.5));
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      onChange(0);
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      onChange(5);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p id={id} className="text-sm font-semibold text-foreground">
+            {label}
+          </p>
+          <p className="text-xs text-muted-foreground">{helperText}</p>
+        </div>
+        <span className="rounded-full border bg-background px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm">
+          {safeValue.toFixed(1)} / 5
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1" role="radiogroup" aria-labelledby={id} onKeyDown={handleKeyDown}>
+        {Array.from({ length: 5 }).map((_, index) => {
+          const starValue = index + 1;
+          const fill = Math.max(0, Math.min(1, safeValue - index));
+
+          return (
+            <button
+              key={starValue}
+              type="button"
+              onClick={(event) => handleStarClick(event, index)}
+              aria-label={`Set ${label} to ${index + 0.5} stars on the left half or ${starValue} stars on the right half`}
+              className="review-star-button group relative inline-flex h-10 w-10 items-center justify-center rounded-full text-amber-400 transition-transform duration-150 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-amber-400/60"
+            >
+              <span className="sr-only">{`${label}: ${safeValue.toFixed(1)} stars`}</span>
+              <svg className="absolute inset-0 h-10 w-10 text-muted-foreground/20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2.25 15.09 8.5l6.91 1.01-5 4.88 1.18 6.88L12 17.98 5.82 21.27 7 14.39l-5-4.88L8.91 8.5 12 2.25Z" />
+              </svg>
+              <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }} aria-hidden="true">
+                <svg className="h-10 w-10 text-amber-400 drop-shadow-sm" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2.25 15.09 8.5l6.91 1.01-5 4.88 1.18 6.88L12 17.98 5.82 21.27 7 14.39l-5-4.88L8.91 8.5 12 2.25Z" />
+                </svg>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StarDisplay({ value, size = 18 }) {
+  const v = clampHalfRating(value);
+  const color = getMarkerColor(v);
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center" aria-hidden>
+        {Array.from({ length: 5 }).map((_, idx) => {
+          const fill = Math.max(0, Math.min(1, v - idx));
+          return (
+            <span key={idx} className="relative inline-block" style={{ width: size, height: size }}>
+              <svg viewBox="0 0 24 24" width={size} height={size} className="text-muted-foreground absolute inset-0">
+                <path d="M12 2.25 15.09 8.5l6.91 1.01-5 4.88 1.18 6.88L12 17.98 5.82 21.27 7 14.39l-5-4.88L8.91 8.5 12 2.25Z" fill="currentColor" />
+              </svg>
+              <span className="absolute left-0 top-0 overflow-hidden" style={{ width: `${fill * 100}%`, color }}>
+                <svg viewBox="0 0 24 24" width={size} height={size} fill={color} className="drop-shadow-sm">
+                  <path d="M12 2.25 15.09 8.5l6.91 1.01-5 4.88 1.18 6.88L12 17.98 5.82 21.27 7 14.39l-5-4.88L8.91 8.5 12 2.25Z" />
+                </svg>
+              </span>
+            </span>
+          );
+        })}
+      </div>
+      <span className="text-sm font-semibold" style={{ color }}>{formatScore(v)}</span>
+    </div>
+  );
+}
+
+function ReviewSummaryCard({ review }) {
+  if (!review) {
+    return (
+      <div className="rounded-2xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+        You have not left a review yet.
+      </div>
+    );
+  }
+
+  const accent = getMarkerColor(review?.overall_rating);
+
+  return (
+    <div className="rounded-2xl border bg-muted/10 p-4 shadow-sm" style={{ borderLeft: `4px solid ${accent}` }}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-foreground">Your saved review</p>
+        <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: accent, color: '#fff' }}>
+          {formatScore(review?.overall_rating)} overall
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+        {REVIEW_FIELDS.map((field) => (
+          <div key={field.key} className="rounded-xl border bg-background px-3 py-2">
+            <p className="font-semibold text-foreground">{field.label}</p>
+            <p>{formatScore(review?.[field.key])} / 5</p>
+          </div>
+        ))}
+      </div>
+      {review?.comment ? (
+        <p className="mt-3 rounded-xl border bg-background px-3 py-2 text-sm text-foreground/80">
+          {review.comment}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ReviewListCard({ review }) {
+  const reviewer = review?.reviewer || {};
+  const accent = getMarkerColor(review?.overall_rating);
+  const comment = (review?.comment || '').trim();
+  const commentSnippet = comment ? (comment.length > 180 ? `${comment.slice(0, 180)}...` : comment) : 'No written comment.';
+
+  return (
+    <article className="rounded-2xl border bg-card p-4 shadow-sm" style={{ borderLeft: `4px solid ${accent}` }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-bold text-foreground">
+            {reviewer.avatar_url ? (
+              <img src={reviewer.avatar_url} alt={reviewer.display_name || reviewer.username || 'Reviewer'} className="h-full w-full object-cover" />
+            ) : (
+              <span>{(reviewer.display_name || reviewer.username || '?').charAt(0).toUpperCase()}</span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {reviewer.display_name || reviewer.username || 'Anonymous'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {review?.created_at ? new Date(review.created_at).toLocaleDateString() : ''}
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ background: accent }}>
+          {formatScore(review?.overall_rating)}
+        </span>
+      </div>
+
+      <div className="mt-3">
+        <StarDisplay value={review?.overall_rating} size={16} />
+      </div>
+
+      <p className="mt-3 text-sm leading-relaxed text-foreground/80">{commentSnippet}</p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+        {REVIEW_FIELDS.map((field) => (
+          <div key={field.key} className="rounded-xl border bg-background px-3 py-2">
+            <p className="font-semibold text-foreground">{field.label}</p>
+            <p>{formatScore(review?.[field.key])} / 5</p>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ReviewsModal({ isOpen, locationName, reviews, loading, error, ordering, onOrderingChange, onLoadMore, hasMore, onClose }) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-6">
+      <button type="button" aria-label="Close reviews popup" className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-3xl border bg-card shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">See people reviews</p>
+            <h2 className="mt-1 text-2xl font-bold tracking-tight text-foreground">{locationName}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Browse ratings from other people for this place.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={ordering}
+              onChange={(event) => onOrderingChange(event.target.value)}
+              className="rounded-full border bg-background px-3 py-2 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+            >
+              <option value="-overall_rating">Highest rating</option>
+              <option value="-created_at">Newest</option>
+            </select>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border bg-background p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Close reviews popup"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[80vh] overflow-y-auto px-6 py-5">
+          {error ? (
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="space-y-4">
+            {reviews.map((review) => (
+              <ReviewListCard key={review.id} review={review} />
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="mt-4 rounded-2xl border bg-muted/10 px-4 py-4 text-sm text-muted-foreground">Loading reviews...</div>
+          ) : null}
+
+          {!loading && !reviews.length && !error ? (
+            <div className="rounded-2xl border border-dashed bg-muted/10 px-4 py-8 text-center text-sm text-muted-foreground">
+              No reviews yet for this place.
+            </div>
+          ) : null}
+
+          {hasMore ? (
+            <div className="mt-5 flex justify-center">
+              <button
+                type="button"
+                onClick={onLoadMore}
+                className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={loading}
+              >
+                {loading ? 'Loading...' : 'Load more'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FavoriteHeartIcon({ isActive }) {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20.8 4.6c-1.7-1.8-4.5-1.9-6.3-.2L12 6.8l-2.5-2.4C7.7 2.7 4.9 2.8 3.2 4.6c-1.8 1.8-1.8 4.8 0 6.7L12 20l8.8-8.7c1.8-1.9 1.8-4.9 0-6.7Z" />
+    </svg>
+  );
+}
+
+function RatingSparkline({ value }) {
+  return (
+    <div className="mt-3 rounded-2xl border bg-background px-4 py-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Overall preview</p>
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-2xl font-black tracking-tight text-foreground">
+            {formatScore(value)}
+          </p>
+          <p className="text-xs text-muted-foreground">Weighted from all four categories</p>
+        </div>
+        <div className="h-2 w-28 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-500 transition-all duration-300" style={{ width: `${(clampHalfRating(value) / 5) * 100}%` }} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Marker focus CSS — injected once into the document head.
@@ -309,14 +678,65 @@ export function PlacesMap() {
   const popupRef = useRef(null);
   const resizeObserverRef = useRef(null);
   const searchLabelRefs = useRef([]);
+  const reviewDialogRef = useRef(null);
+  const favoriteAnimationTimerRef = useRef(null);
 
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [userReview, setUserReview] = useState(null);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [favoriteSubmitting, setFavoriteSubmitting] = useState(false);
+  const [favoriteAnimating, setFavoriteAnimating] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState(() => createEmptyReviewDraft());
+  const [reviewPreview, setReviewPreview] = useState([]);
+  const [reviewPreviewLoading, setReviewPreviewLoading] = useState(false);
+  const [reviewPreviewError, setReviewPreviewError] = useState(null);
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState(null);
+  const [reviewsOrdering, setReviewsOrdering] = useState('-overall_rating');
+  const [reviewsNextPage, setReviewsNextPage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [showMyReview, setShowMyReview] = useState(false);
+  const [showUserReviewDetails, setShowUserReviewDetails] = useState(false);
+  const [panelView, setPanelView] = useState('details');
+
+  // Simplified favorite toggle handler — keeps selectedLocation.is_favorited in sync
+  const handleToggleFavorite = async () => {
+    if (!selectedLocation) return;
+    if (favoriteSubmitting) return;
+    setFavoriteSubmitting(true);
+    setFavoriteAnimating(true);
+    if (favoriteAnimationTimerRef.current) {
+      window.clearTimeout(favoriteAnimationTimerRef.current);
+    }
+    favoriteAnimationTimerRef.current = window.setTimeout(() => {
+      setFavoriteAnimating(false);
+    }, 360);
+
+    try {
+      if (isFavorited) {
+        await deleteFavorite(selectedLocation.id);
+        setIsFavorited(false);
+        setLocations((prev) => prev.map((l) => (l.id === selectedLocation.id ? { ...l, is_favorited: false } : l)));
+      } else {
+        await createFavorite(selectedLocation.id, { custom_note: '' });
+        setIsFavorited(true);
+        setLocations((prev) => prev.map((l) => (l.id === selectedLocation.id ? { ...l, is_favorited: true } : l)));
+      }
+    } catch (err) {
+      console.error('Favorite error', err);
+    } finally {
+      setFavoriteSubmitting(false);
+    }
+  };
 
   // Debounce: update debouncedQuery 300ms after user stops typing
   useEffect(() => {
@@ -331,6 +751,172 @@ export function PlacesMap() {
     () => locations.find((location) => location.id === selectedLocationId) || null,
     [locations, selectedLocationId],
   );
+
+  useEffect(() => {
+    if (!selectedLocation) {
+      setUserReview(null);
+      setIsFavorited(false);
+      setReviewDraft(createEmptyReviewDraft());
+      setIsReviewModalOpen(false);
+      setReviewsModalOpen(false);
+      setReviewPreview([]);
+      setReviewPreviewLoading(false);
+      setReviewPreviewError(null);
+      setReviews([]);
+      setReviewsLoading(false);
+      setReviewsError(null);
+      setReviewsNextPage(null);
+      return;
+    }
+
+    const currentReview = selectedLocation.current_user_review || null;
+    setUserReview(currentReview);
+    setIsFavorited(Boolean(selectedLocation.is_favorited));
+    setReviewDraft(currentReview ? reviewToDraft(currentReview) : createEmptyReviewDraft());
+  }, [selectedLocationId, selectedLocation]);
+
+  useEffect(() => {
+    if (selectedLocationId) {
+      setPanelView('details');
+    }
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPreviewReviews() {
+      if (!selectedLocationId) {
+        return;
+      }
+
+      setReviewPreviewLoading(true);
+      setReviewPreviewError(null);
+
+      try {
+        const response = await listLocationReviews(selectedLocationId, {
+          page: 1,
+          page_size: 2,
+          ordering: '-overall_rating',
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const results = Array.isArray(response?.results) ? response.results : Array.isArray(response) ? response : [];
+        setReviewPreview(results);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to load review preview', err);
+          setReviewPreview([]);
+          setReviewPreviewError(err?.message || 'Failed to load reviews.');
+        }
+      } finally {
+        if (!cancelled) {
+          setReviewPreviewLoading(false);
+        }
+      }
+    }
+
+    loadPreviewReviews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLocationId]);
+
+  const loadReviewsPage = async ({ page = 1, ordering = reviewsOrdering, append = false } = {}) => {
+    if (!selectedLocationId) {
+      return;
+    }
+
+    setReviewsLoading(true);
+    setReviewsError(null);
+
+    try {
+      const response = await listLocationReviews(selectedLocationId, {
+        page,
+        page_size: 6,
+        ordering,
+      });
+
+      const results = Array.isArray(response?.results) ? response.results : Array.isArray(response) ? response : [];
+      const nextPage = getPageNumberFromUrl(response?.next);
+
+      setReviews((currentReviews) => (append ? [...currentReviews, ...results] : results));
+      setReviewsNextPage(nextPage);
+      setReviewsOrdering(ordering);
+      setReviewPreview(results.slice(0, 2));
+      setShowUserReviewDetails(false);
+    } catch (err) {
+      console.error('Failed to load reviews', err);
+      setReviewsError(err?.message || 'Failed to load reviews.');
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  // Per-location visibility persistence for user-review UI
+  useEffect(() => {
+    if (!selectedLocationId) {
+      setShowMyReview(false);
+      setShowUserReviewDetails(false);
+      return;
+    }
+
+    try {
+      const key = `review-visibility-${selectedLocationId}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setShowMyReview(Boolean(parsed.showMyReview));
+        setShowUserReviewDetails(Boolean(parsed.showUserReviewDetails));
+      } else {
+        const cur = locations.find((l) => l.id === selectedLocationId);
+        setShowMyReview(Boolean(cur?.current_user_review));
+        setShowUserReviewDetails(false);
+      }
+    } catch (err) {
+      console.warn('Failed to restore per-location review visibility:', err);
+    }
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    if (!selectedLocationId) return;
+    try {
+      const key = `review-visibility-${selectedLocationId}`;
+      localStorage.setItem(key, JSON.stringify({ showMyReview, showUserReviewDetails }));
+    } catch (err) {
+      console.warn('Failed to save per-location review visibility:', err);
+    }
+  }, [selectedLocationId, showMyReview, showUserReviewDetails]);
+
+  useEffect(() => {
+    if (!isReviewModalOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsReviewModalOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    requestAnimationFrame(() => {
+      const firstFocusable = reviewDialogRef.current?.querySelector('button, textarea, [href], input, [tabindex]:not([tabindex="-1"])');
+      firstFocusable?.focus();
+    });
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isReviewModalOpen]);
+
+  useEffect(() => () => {
+    if (favoriteAnimationTimerRef.current) {
+      window.clearTimeout(favoriteAnimationTimerRef.current);
+    }
+  }, []);
 
   const filteredLocationIds = useMemo(() => {
     const query = debouncedQuery.trim().toLowerCase();
@@ -347,7 +933,20 @@ export function PlacesMap() {
     return locations.filter((loc) => filteredLocationIds.has(loc.id));
   }, [locations, filteredLocationIds]);
 
+  const favoriteLocations = useMemo(
+    () => locations.filter((location) => location.is_favorited),
+    [locations],
+  );
+
   const isSearchActive = filteredLocationIds !== null;
+
+  const openLocationOnMap = (locationId) => {
+    setSelectedLocationId(locationId);
+    setPanelView('details');
+    requestAnimationFrame(() => {
+      mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -707,11 +1306,92 @@ export function PlacesMap() {
             }
           `}</style>
 
-          <div className="mb-5">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Selected place</p>
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Find My Café</p>
+              <p className="text-lg font-semibold text-foreground">Your café dashboard</p>
+            </div>
+            <div className="inline-flex rounded-full border bg-muted/40 p-1 text-xs font-semibold text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => setPanelView('details')}
+                aria-pressed={panelView === 'details'}
+                className={`rounded-full px-3 py-1.5 transition-colors ${panelView === 'details' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
+              >
+                Selected place
+              </button>
+              <button
+                type="button"
+                onClick={() => setPanelView('favorites')}
+                aria-pressed={panelView === 'favorites'}
+                className={`rounded-full px-3 py-1.5 transition-colors ${panelView === 'favorites' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
+              >
+                Favourites ({favoriteLocations.length})
+              </button>
+            </div>
           </div>
 
-          {selectedLocation ? (
+          {panelView === 'favorites' ? (
+            <div className="flex-1 space-y-4">
+              {favoriteLocations.length ? (
+                <div className="space-y-3">
+                  {favoriteLocations.map((location) => {
+                    const review = location.current_user_review || null;
+                    const aiSummary = location.aggregate_profile?.ai_description?.trim() || '';
+                    const reviewText = review?.comment?.trim() || '';
+                    const reviewSnippet = reviewText
+                      ? (reviewText.length > 140 ? `${reviewText.slice(0, 140)}...` : reviewText)
+                      : 'No written review yet.';
+
+                    return (
+                      <article key={location.id} className="rounded-2xl border bg-background p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="truncate text-base font-semibold text-foreground">{location.name}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{location.address || 'No address available'}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openLocationOnMap(location.id)}
+                            className="shrink-0 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                          >
+                            Open on map
+                          </button>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border bg-card px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Community rating</p>
+                            <div className="mt-2">
+                              <StarDisplay value={location.aggregate_profile?.overall_rating} />
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl border bg-card px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Your review</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              {review ? `${formatScore(review.overall_rating)} overall` : 'No review yet'}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">{reviewSnippet}</p>
+                          </div>
+                        </div>
+
+                        {aiSummary ? (
+                          <p className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-sm text-foreground/80">
+                            {aiSummary.length > 180 ? `${aiSummary.slice(0, 180)}...` : aiSummary}
+                          </p>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
+                  You have not saved any favourite cafés yet. Mark a café as a favourite from the map, then it will appear here.
+                </div>
+              )}
+            </div>
+          ) : selectedLocation ? (
             <div key={selectedLocation.id} className="flex-1 space-y-6">
               {/* Header Info */}
               <div className="animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>
@@ -725,14 +1405,75 @@ export function PlacesMap() {
                       {selectedLocation.address || 'No address available'}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-col items-center justify-center rounded-2xl bg-primary/5 px-4 py-2 border border-primary/10 shadow-sm">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Rating</span>
-                    <span className="text-2xl font-black" style={{ color: getMarkerColor(selectedLocation.aggregate_profile?.overall_rating) }}>
-                      {formatScore(selectedLocation.aggregate_profile?.overall_rating)}
-                    </span>
+
+                  <div className="ml-3 flex items-center gap-3">
+                    <div className="flex shrink-0 flex-col items-center justify-center rounded-2xl px-3 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Rating</span>
+                      <StarDisplay value={selectedLocation.aggregate_profile?.overall_rating} />
+                    </div>
+
+                    {/* Inline User Review CTA placed between rating and favorite */}
+                    <div className="flex items-center gap-2">
+                      {userReview && userReview.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowUserReviewDetails((v) => !v)}
+                            className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm hover:bg-muted"
+                            title="Click to view your per-category scores"
+                          >
+                            <span className="text-xs font-medium text-muted-foreground mr-2">Your rating</span>
+                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-sm font-semibold text-primary">
+                              {formatScore(userReview.overall_rating)}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReviewDraft(userReview ? reviewToDraft(userReview) : createEmptyReviewDraft());
+                              setIsReviewModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReviewDraft(createEmptyReviewDraft());
+                            setIsReviewModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          Leave review
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleToggleFavorite}
+                      aria-pressed={isFavorited}
+                      aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                      className={`favorite-button relative inline-flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${isFavorited ? 'favorite-button--active bg-red-100 text-red-600 shadow-sm' : 'bg-muted/10 text-muted-foreground'} ${favoriteAnimating ? 'favorite-button--animating' : ''} ${favoriteSubmitting ? 'opacity-80' : ''}`}
+                      disabled={favoriteSubmitting}
+                    >
+                      <span className="favorite-button__burst" aria-hidden="true" />
+                      <span className={`relative z-10 transition-transform duration-200 ${favoriteAnimating ? 'scale-110' : 'scale-100'}`}>
+                        <FavoriteHeartIcon isActive={isFavorited} />
+                      </span>
+                    </button>
                   </div>
                 </div>
               </div>
+
+              {userReview && showUserReviewDetails ? (
+                <div className="animate-slide-up opacity-0" style={{ animationDelay: '80ms' }}>
+                  <ReviewSummaryCard review={userReview} />
+                </div>
+              ) : null}
 
               {/* Sub-ratings */}
               <div className="animate-slide-up opacity-0" style={{ animationDelay: '100ms' }}>
@@ -777,6 +1518,50 @@ export function PlacesMap() {
                   </p>
                 </div>
               </div>
+
+              <div className="animate-slide-up opacity-0 space-y-4" style={{ animationDelay: '240ms' }}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">People reviews</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReviewsModalOpen(true);
+                      void loadReviewsPage({ page: 1, ordering: reviewsOrdering, append: false });
+                    }}
+                    className="rounded-full border bg-background px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
+                  >
+                    See people reviews
+                  </button>
+                </div>
+
+                {reviewPreviewError ? (
+                  <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {reviewPreviewError}
+                  </div>
+                ) : null}
+
+                {reviewPreviewLoading ? (
+                  <div className="rounded-2xl border bg-muted/10 px-4 py-4 text-sm text-muted-foreground">
+                    Loading reviews...
+                  </div>
+                ) : null}
+
+                {!reviewPreviewLoading && reviewPreview.length ? (
+                  <div className="space-y-3">
+                    {reviewPreview.map((review) => (
+                      <ReviewListCard key={review.id} review={review} />
+                    ))}
+                  </div>
+                ) : null}
+
+                {!reviewPreviewLoading && !reviewPreview.length && !reviewPreviewError ? (
+                  <div className="rounded-2xl border border-dashed bg-muted/10 px-4 py-4 text-sm text-muted-foreground">
+                    No people reviews yet.
+                  </div>
+                ) : null}
+              </div>
+
+              
             </div>
           ) : (
             <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-4 rounded-2xl border border-dashed bg-muted/10 p-8 text-center text-muted-foreground animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>
@@ -791,6 +1576,154 @@ export function PlacesMap() {
           )}
         </aside>
       </div>
+
+      <ReviewsModal
+        isOpen={reviewsModalOpen && Boolean(selectedLocation)}
+        locationName={selectedLocation?.name || ''}
+        reviews={reviews}
+        loading={reviewsLoading}
+        error={reviewsError}
+        ordering={reviewsOrdering}
+        onOrderingChange={(nextOrdering) => {
+          setReviewsOrdering(nextOrdering);
+          void loadReviewsPage({ page: 1, ordering: nextOrdering, append: false });
+        }}
+        onLoadMore={() => {
+          const nextPage = reviewsNextPage || 2;
+          void loadReviewsPage({ page: nextPage, ordering: reviewsOrdering, append: true });
+        }}
+        hasMore={Boolean(reviewsNextPage)}
+        onClose={() => setReviewsModalOpen(false)}
+      />
+
+      {isReviewModalOpen && selectedLocation ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            aria-label="Close review popup"
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            onClick={() => setIsReviewModalOpen(false)}
+          />
+
+          <div
+            ref={reviewDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-modal-title"
+            className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border bg-card shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300"
+          >
+            <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">Leave your review!</p>
+                <h2 id="review-modal-title" className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+                  {selectedLocation.name}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Tap the left or right side of each star to pick half-star precision.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(false)}
+                className="rounded-full border bg-background p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Close review popup"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="max-h-[80vh] overflow-y-auto px-6 py-5">
+              <div className="space-y-5">
+                {REVIEW_FIELDS.map((field) => (
+                  <StarRatingRow
+                    key={field.key}
+                    id={`review-rating-${field.key}`}
+                    label={field.label}
+                    helperText={field.helperText}
+                    value={reviewDraft[field.key]}
+                    onChange={(nextValue) => {
+                      setReviewDraft((currentDraft) => ({
+                        ...currentDraft,
+                        [field.key]: nextValue,
+                      }));
+                    }}
+                  />
+                ))}
+
+                <RatingSparkline value={getReviewPreviewRating(reviewDraft)} />
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-foreground">Optional comment</span>
+                  <textarea
+                    rows={4}
+                    value={reviewDraft.comment}
+                    onChange={(event) => setReviewDraft((currentDraft) => ({
+                      ...currentDraft,
+                      comment: event.target.value,
+                    }))}
+                    placeholder="What stood out about this place?"
+                    className="w-full rounded-2xl border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+                  />
+                </label>
+
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsReviewModalOpen(false)}
+                    className="rounded-full border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reviewSubmitting}
+                    onClick={async () => {
+                      if (!selectedLocation) return;
+
+                      setReviewSubmitting(true);
+                      try {
+                        const payload = {
+                          laptop_friendly: reviewDraft.laptop_friendly,
+                          study_friendly: reviewDraft.study_friendly,
+                          overall_corwdness: reviewDraft.overall_corwdness,
+                          noise_level: reviewDraft.noise_level,
+                          comment: reviewDraft.comment,
+                        };
+
+                        const data = await createLocationReview(selectedLocation.id, payload);
+                        setUserReview(data);
+                        setLocations((prevLocations) => prevLocations.map((location) => {
+                          if (location.id !== selectedLocation.id) {
+                            return location;
+                          }
+
+                          return {
+                            ...location,
+                            current_user_review: data,
+                          };
+                        }));
+                        setReviewDraft(reviewToDraft(data));
+                        setIsReviewModalOpen(false);
+                      } catch (err) {
+                        console.error('Review submit error', err);
+                      } finally {
+                        setReviewSubmitting(false);
+                      }
+                    }}
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {reviewSubmitting ? 'Saving...' : (userReview && userReview.id ? 'Update review' : 'Submit review')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

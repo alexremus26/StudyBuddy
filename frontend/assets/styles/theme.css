@@ -217,6 +217,35 @@
   to { opacity: 1; }
 }
 
+@keyframes favorite-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.14);
+  }
+  70% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes favorite-burst {
+  0% {
+    opacity: 0;
+    transform: scale(0.25);
+  }
+  30% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
 .custom-map-popup .mapboxgl-popup-content {
   background-color: rgba(255, 255, 255, 0.92) !important;
   backdrop-filter: blur(16px) !important;
@@ -246,6 +275,44 @@
 .dark .custom-map-popup .mapboxgl-popup-tip {
   border-top-color: rgba(15, 15, 15, 0.92) !important;
   border-bottom-color: rgba(15, 15, 15, 0.92) !important;
+}
+
+.favorite-button {
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+.favorite-button:active {
+  transform: scale(0.95);
+}
+
+.favorite-button--active {
+  border-color: rgba(239, 68, 68, 0.18);
+}
+
+.favorite-button--animating {
+  animation: favorite-pop 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.favorite-button__burst {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.35) 0%, rgba(239, 68, 68, 0.12) 36%, rgba(239, 68, 68, 0) 70%);
+  opacity: 0;
+  transform: scale(0.2);
+  pointer-events: none;
+}
+
+.favorite-button--animating .favorite-button__burst {
+  animation: favorite-burst 360ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .favorite-button--animating,
+  .favorite-button--animating .favorite-button__burst {
+    animation: none !important;
+  }
 }
 
 /* Mapbox Attribution / Controls */

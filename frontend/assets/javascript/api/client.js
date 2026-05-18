@@ -284,6 +284,32 @@ export async function listCafeLocations() {
   return data;
 }
 
+export async function createLocationReview(locationId, payload) {
+  return postJson(`/api/coffeeshops/locations/${locationId}/reviews/`, payload);
+}
+
+export async function listLocationReviews(locationId, params = {}) {
+  const query = new URLSearchParams();
+  if (params.page != null) query.set('page', String(params.page));
+  if (params.page_size != null) query.set('page_size', String(params.page_size));
+  if (params.ordering) query.set('ordering', params.ordering);
+
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const { data, error, response } = await apiClient.GET(`/api/coffeeshops/locations/${locationId}/reviews/${suffix}`);
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
+export async function createFavorite(locationId, payload) {
+  return postJson(`/api/coffeeshops/locations/${locationId}/favorite/`, payload);
+}
+
+export async function deleteFavorite(locationId) {
+  return deleteJson(`/api/coffeeshops/locations/${locationId}/favorite/`);
+}
+
 export async function createTaskBlock(payload) {
   return postJson('/api/schedule/task-blocks/', payload);
 }

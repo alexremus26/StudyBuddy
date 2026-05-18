@@ -17,7 +17,7 @@ class UserFavPlaceAdmin(admin.ModelAdmin):
 
 @admin.register(UserReview)
 class UserReviewAdmin(admin.ModelAdmin):
-	list_display = ('user', 'location', 'rating', 'created_at')
+	list_display = ('user', 'location', 'overall_rating', 'created_at')
 	search_fields = ('user__username', 'location__name', 'comment')
 
 

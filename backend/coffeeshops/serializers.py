@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import AIAggregateProfile, Location, UserReview, UserFavPlace
+from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace
 
 
 class AIAggregateProfileSummarySerializer(serializers.Serializer):
@@ -68,6 +68,23 @@ class LocationMapSerializer(serializers.ModelSerializer):
 
         fav = obj.favorited_by.filter(user=request.user).exists()
         return bool(fav)
+
+
+class AIProfileGenerationJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AIProfileGenerationJob
+        fields = (
+            "id",
+            "location",
+            "status",
+            "process_task_id",
+            "fetch_task_id",
+            "score_task_id",
+            "error",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
 
 
 class UserReviewSerializer(serializers.ModelSerializer):

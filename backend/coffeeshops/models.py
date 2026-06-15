@@ -134,3 +134,51 @@ class AIAggregateProfile(models.Model):
 	def __str__(self):
 		return f"Aggregate Profile (Overall: {self.overall_rating:.1f})"
 
+
+class AIProfileGenerationJob(models.Model):
+	STATUS_QUEUED = "queued"
+	STATUS_FETCHING_REVIEWS = "fetching_reviews"
+	STATUS_SCORING = "scoring"
+	STATUS_DONE = "done"
+	STATUS_FAILED = "failed"
+
+	ACTIVE_STATUSES = {
+		STATUS_QUEUED,
+		STATUS_FETCHING_REVIEWS,
+		STATUS_SCORING,
+	}
+
+	STATUS_CHOICES = [
+		(STATUS_QUEUED, "Queued"),
+		(STATUS_FETCHING_REVIEWS, "Fetching reviews"),
+		(STATUS_SCORING, "Scoring"),
+		(STATUS_DONE, "Done"),
+		(STATUS_FAILED, "Failed"),
+	]
+
+	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="ai_generation_jobs")
+	status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
+	process_task_id = models.CharField(max_length=255, blank=True)
+	fetch_task_id = models.CharField(max_length=255, blank=True)
+	score_task_id = models.CharField(max_length=255, blank=True)
+	error = models.TextField(blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = "app_aiprofilegenerationjob"
+		indexes = [
+			models.Index(fields=["location", "status"]),
+			models.Index(fields=["updated_at"]),
+		]
+		ordering = ["-updated_at"]
+
+	def mark_status(self, status: str, error: str = "", **task_ids):
+		self.status = status
+		self.error = error
+		for field_name, value in task_ids.items():
+			if value:
+				setattr(self, field_name, value)
+		update_fields = ["status", "error", "updated_at", *task_ids.keys()]
+		self.save(update_fields=update_fields)
+		return self

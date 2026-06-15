@@ -7,8 +7,10 @@ from rest_framework.response import Response
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 
-from .models import AIAggregateProfile, Location, UserReview, UserFavPlace
+from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace
 from .serializers import (
+    AIAggregateProfileSummarySerializer,
+    AIProfileGenerationJobSerializer,
     LocationMapSerializer,
     UserReviewSerializer,
     UserFavPlaceSerializer,
@@ -129,6 +131,54 @@ def location_reviews(request, location_id: int):
 
     serializer.save(user=request.user, location=location)
     return Response(serializer.data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
+
+
+def _latest_profile(location: Location):
+    return location.aggregate_profiles.order_by("-created_at").first()
+
+
+def _active_generation_job(location: Location):
+    return (
+        location.ai_generation_jobs.filter(status__in=AIProfileGenerationJob.ACTIVE_STATUSES)
+        .order_by("-updated_at")
+        .first()
+    )
+
+
+def _generation_payload(location: Location, job=None):
+    profile = _latest_profile(location)
+    if job is None:
+        job = _active_generation_job(location) or location.ai_generation_jobs.order_by("-updated_at").first()
+
+    return {
+        "location_id": location.id,
+        "profile": AIAggregateProfileSummarySerializer(profile).data if profile else None,
+        "job": AIProfileGenerationJobSerializer(job).data if job else None,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def location_ai_profile_generation(request, location_id: int):
+    location = get_object_or_404(Location, id=location_id)
+    return Response(_generation_payload(location), status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def generate_location_ai_profile(request, location_id: int):
+    location = get_object_or_404(Location, id=location_id)
+    profile = _latest_profile(location)
+    if profile:
+        return Response(_generation_payload(location), status=status.HTTP_200_OK)
+
+    from .tasks import enqueue_location_profile_generation
+
+    job, created = enqueue_location_profile_generation(location)
+    return Response(
+        _generation_payload(location, job=job),
+        status=status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST", "DELETE"])

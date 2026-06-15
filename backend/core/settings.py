@@ -37,6 +37,9 @@ APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "").strip()
 APIFY_REVIEWS_ACTOR_ID = os.environ.get(
     "APIFY_REVIEWS_ACTOR_ID", "compass/crawler-google-places"
 ).strip()
+APIFY_PLACES_ACTOR_ID = os.environ.get(
+    "APIFY_PLACES_ACTOR_ID", "compass/crawler-google-places"
+).strip()
 APIFY_MAX_REVIEWS_PER_PLACE = int(os.environ.get("APIFY_MAX_REVIEWS_PER_PLACE", "100"))
 
 # Ollama Configuration — local LLM for AI profile scoring

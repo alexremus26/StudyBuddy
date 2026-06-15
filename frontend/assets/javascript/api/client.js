@@ -302,6 +302,18 @@ export async function listLocationReviews(locationId, params = {}) {
   return data;
 }
 
+export async function getLocationAIProfileGeneration(locationId) {
+  const { data, error, response } = await apiClient.GET(`/api/coffeeshops/locations/${locationId}/ai-profile-generation/`);
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
+export async function generateLocationAIProfile(locationId) {
+  return postJson(`/api/coffeeshops/locations/${locationId}/generate-ai-profile/`, {});
+}
+
 export async function createFavorite(locationId, payload) {
   return postJson(`/api/coffeeshops/locations/${locationId}/favorite/`, payload);
 }

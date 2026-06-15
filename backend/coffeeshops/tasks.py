@@ -3,12 +3,51 @@ import logging
 from celery import shared_task
 from django.db import ProgrammingError, transaction
 
-from coffeeshops.models import AIAggregateProfile, Location
+from coffeeshops.models import AIAggregateProfile, AIProfileGenerationJob, Location
 from coffeeshops.services.ai_profile_service import build_ai_profile_from_reviews
 from coffeeshops.services.apify_reviews import fetch_apify_reviews
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_job(job_id: int | None) -> AIProfileGenerationJob | None:
+    if not job_id:
+        return None
+    try:
+        return AIProfileGenerationJob.objects.get(id=job_id)
+    except AIProfileGenerationJob.DoesNotExist:
+        logger.warning("AI profile generation job %s no longer exists", job_id)
+        return None
+
+
+def get_latest_profile(location: Location) -> AIAggregateProfile | None:
+    return location.aggregate_profiles.order_by("-created_at").first()
+
+
+def get_active_generation_job(location: Location) -> AIProfileGenerationJob | None:
+    return (
+        location.ai_generation_jobs.filter(status__in=AIProfileGenerationJob.ACTIVE_STATUSES)
+        .order_by("-updated_at")
+        .first()
+    )
+
+
+def enqueue_location_profile_generation(location: Location) -> tuple[AIProfileGenerationJob, bool]:
+    active_job = get_active_generation_job(location)
+    if active_job:
+        return active_job, False
+
+    job = AIProfileGenerationJob.objects.create(
+        location=location,
+        status=AIProfileGenerationJob.STATUS_QUEUED,
+    )
+    async_result = process_location_profile_task.delay(location.id, job.id)
+    job.mark_status(
+        AIProfileGenerationJob.STATUS_QUEUED,
+        process_task_id=async_result.id,
+    )
+    return job, True
 
 
 def _serialize_user_reviews(location: Location) -> list[dict]:
@@ -80,10 +119,17 @@ def _save_ai_profile(location: Location, combined_reviews: list[dict]) -> dict:
 
 
 @shared_task(bind=True, queue="coffeeshops")
-def process_location_profile_task(self, location_id: int) -> dict:
+def process_location_profile_task(self, location_id: int, job_id: int | None = None) -> dict:
     location = Location.objects.get(id=location_id)
+    job = _get_job(job_id)
     # Stage 1: fetch reviews from Apify (I/O-bound, runs in parallel on apify queue)
-    async_result = fetch_reviews_task.delay(location.id)
+    async_result = fetch_reviews_task.delay(location.id, job.id if job else None)
+    if job:
+        job.mark_status(
+            AIProfileGenerationJob.STATUS_QUEUED,
+            process_task_id=self.request.id,
+            fetch_task_id=async_result.id,
+        )
 
     return {
         "location_id": location.id,
@@ -102,7 +148,7 @@ def process_location_profile_task(self, location_id: int) -> dict:
     retry_backoff_max=120,
     max_retries=3,
 )
-def fetch_reviews_task(self, location_id: int) -> dict:
+def fetch_reviews_task(self, location_id: int, job_id: int | None = None) -> dict:
     """
     Stage 1 — Fetch reviews from Apify.
 
@@ -110,14 +156,31 @@ def fetch_reviews_task(self, location_id: int) -> dict:
     On completion, enqueues score_location_task on the 'ai' queue.
     """
     location = Location.objects.get(id=location_id)
-    combined_reviews = _collect_reviews(location)
+    job = _get_job(job_id)
+    if job:
+        job.mark_status(
+            AIProfileGenerationJob.STATUS_FETCHING_REVIEWS,
+            fetch_task_id=self.request.id,
+        )
+
+    try:
+        combined_reviews = _collect_reviews(location)
+    except Exception as exc:
+        if job and self.request.retries >= self.max_retries:
+            job.mark_status(AIProfileGenerationJob.STATUS_FAILED, error=str(exc))
+        raise
 
     logger.info(
         "Fetched %d reviews for location %s (%s), enqueuing for AI scoring",
         len(combined_reviews), location.id, location.name,
     )
 
-    score_location_task.delay(location.id, combined_reviews)
+    async_result = score_location_task.delay(location.id, combined_reviews, job.id if job else None)
+    if job:
+        job.mark_status(
+            AIProfileGenerationJob.STATUS_SCORING,
+            score_task_id=async_result.id,
+        )
 
     return {
         "location_id": location.id,
@@ -137,7 +200,7 @@ def fetch_reviews_task(self, location_id: int) -> dict:
     max_retries=3,
     retry_kwargs={"countdown": 10},
 )
-def score_location_task(self, location_id: int, combined_reviews: list[dict]) -> dict:
+def score_location_task(self, location_id: int, combined_reviews: list[dict], job_id: int | None = None) -> dict:
     """
     Stage 2 — Score reviews with the configured local Ollama model.
 
@@ -145,7 +208,22 @@ def score_location_task(self, location_id: int, combined_reviews: list[dict]) ->
     Receives reviews directly from fetch_reviews_task to avoid re-fetching.
     """
     location = Location.objects.get(id=location_id)
-    profile_payload = _save_ai_profile(location, combined_reviews)
+    job = _get_job(job_id)
+    if job:
+        job.mark_status(
+            AIProfileGenerationJob.STATUS_SCORING,
+            score_task_id=self.request.id,
+        )
+
+    try:
+        profile_payload = _save_ai_profile(location, combined_reviews)
+    except Exception as exc:
+        if job and self.request.retries >= self.max_retries:
+            job.mark_status(AIProfileGenerationJob.STATUS_FAILED, error=str(exc))
+        raise
+
+    if job:
+        job.mark_status(AIProfileGenerationJob.STATUS_DONE)
 
     return {
         "location_id": location.id,

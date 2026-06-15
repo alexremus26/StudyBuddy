@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { listCafeLocations, createLocationReview, listLocationReviews, createFavorite, deleteFavorite } from '../api/client';
+import {
+  listCafeLocations,
+  createLocationReview,
+  listLocationReviews,
+  createFavorite,
+  deleteFavorite,
+  generateLocationAIProfile,
+  getLocationAIProfileGeneration,
+  getAuthToken,
+} from '../api/client';
 
 const MAPBOX_STYLES = {
   light: 'mapbox://styles/mapbox/streets-v12',
@@ -55,6 +64,16 @@ const EMPTY_REVIEW_DRAFT = {
   noise_level: 0,
   comment: '',
 };
+
+const ACTIVE_AI_JOB_STATUSES = new Set(['queued', 'fetching_reviews', 'scoring']);
+
+function getAIJobLabel(status) {
+  if (status === 'fetching_reviews') return 'Fetching reviews...';
+  if (status === 'scoring') return 'Building AI review...';
+  if (status === 'queued') return 'Queued...';
+  if (status === 'failed') return 'Generation failed';
+  return 'Generating...';
+}
 
 function clampHalfRating(value) {
   const numericValue = Number(value);
@@ -707,6 +726,9 @@ export function PlacesMap() {
   const [showMyReview, setShowMyReview] = useState(false);
   const [showUserReviewDetails, setShowUserReviewDetails] = useState(false);
   const [panelView, setPanelView] = useState('details');
+  const [aiGenerationJob, setAiGenerationJob] = useState(null);
+  const [aiGenerationLoading, setAiGenerationLoading] = useState(false);
+  const [aiGenerationError, setAiGenerationError] = useState(null);
 
   // Simplified favorite toggle handler — keeps selectedLocation.is_favorited in sync
   const handleToggleFavorite = async () => {
@@ -752,6 +774,24 @@ export function PlacesMap() {
     [locations, selectedLocationId],
   );
 
+  const applyAIProfileGenerationPayload = (locationId, payload) => {
+    if (payload?.job) {
+      setAiGenerationJob(payload.job);
+    }
+
+    if (!payload?.profile) {
+      return;
+    }
+
+    setLocations((currentLocations) => (
+      currentLocations.map((location) => (
+        location.id === locationId
+          ? { ...location, aggregate_profile: payload.profile }
+          : location
+      ))
+    ));
+  };
+
   useEffect(() => {
     if (!selectedLocation) {
       setUserReview(null);
@@ -766,6 +806,9 @@ export function PlacesMap() {
       setReviewsLoading(false);
       setReviewsError(null);
       setReviewsNextPage(null);
+      setAiGenerationJob(null);
+      setAiGenerationLoading(false);
+      setAiGenerationError(null);
       return;
     }
 
@@ -773,7 +816,68 @@ export function PlacesMap() {
     setUserReview(currentReview);
     setIsFavorited(Boolean(selectedLocation.is_favorited));
     setReviewDraft(currentReview ? reviewToDraft(currentReview) : createEmptyReviewDraft());
+    setAiGenerationJob(null);
+    setAiGenerationError(null);
   }, [selectedLocationId, selectedLocation]);
+
+  const handleGenerateAIProfile = async () => {
+    if (!selectedLocation || aiGenerationLoading) {
+      return;
+    }
+
+    if (!getAuthToken()) {
+      setAiGenerationError('Sign in to generate an AI review.');
+      return;
+    }
+
+    setAiGenerationLoading(true);
+    setAiGenerationError(null);
+
+    try {
+      const payload = await generateLocationAIProfile(selectedLocation.id);
+      applyAIProfileGenerationPayload(selectedLocation.id, payload);
+    } catch (err) {
+      console.error('Failed to start AI profile generation', err);
+      setAiGenerationError(err?.message || 'Failed to start AI review generation.');
+    } finally {
+      setAiGenerationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedLocationId || selectedLocation?.aggregate_profile) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function pollGenerationStatus() {
+      try {
+        const payload = await getLocationAIProfileGeneration(selectedLocationId);
+        if (cancelled) {
+          return;
+        }
+        applyAIProfileGenerationPayload(selectedLocationId, payload);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to load AI generation status', err);
+        }
+      }
+    }
+
+    void pollGenerationStatus();
+    const timer = window.setInterval(() => {
+      const status = aiGenerationJob?.status;
+      if (!status || ACTIVE_AI_JOB_STATUSES.has(status)) {
+        void pollGenerationStatus();
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedLocationId, selectedLocation?.aggregate_profile, aiGenerationJob?.status]);
 
   useEffect(() => {
     if (selectedLocationId) {
@@ -1306,17 +1410,17 @@ export function PlacesMap() {
             }
           `}</style>
 
-          <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="mb-5 space-y-3">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Find My Café</p>
               <p className="text-lg font-semibold text-foreground">Your café dashboard</p>
             </div>
-            <div className="inline-flex rounded-full border bg-muted/40 p-1 text-xs font-semibold text-muted-foreground">
+            <div className="inline-flex w-full rounded-full border bg-muted/40 p-1 text-xs font-semibold text-muted-foreground">
               <button
                 type="button"
                 onClick={() => setPanelView('details')}
                 aria-pressed={panelView === 'details'}
-                className={`rounded-full px-3 py-1.5 transition-colors ${panelView === 'details' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
+                className={`flex-1 rounded-full px-2 py-1.5 text-center transition-colors ${panelView === 'details' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
               >
                 Selected place
               </button>
@@ -1324,7 +1428,7 @@ export function PlacesMap() {
                 type="button"
                 onClick={() => setPanelView('favorites')}
                 aria-pressed={panelView === 'favorites'}
-                className={`rounded-full px-3 py-1.5 transition-colors ${panelView === 'favorites' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
+                className={`flex-1 rounded-full px-2 py-1.5 text-center transition-colors ${panelView === 'favorites' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
               >
                 Favourites ({favoriteLocations.length})
               </button>
@@ -1345,39 +1449,40 @@ export function PlacesMap() {
 
                     return (
                       <article key={location.id} className="rounded-2xl border bg-background p-4 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="truncate text-base font-semibold text-foreground">{location.name}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{location.address || 'No address available'}</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-semibold text-foreground leading-snug">{location.name}</h3>
+                            <p className="mt-1 text-xs text-muted-foreground leading-snug">{location.address || 'No address available'}</p>
                           </div>
                           <button
                             type="button"
                             onClick={() => openLocationOnMap(location.id)}
-                            className="shrink-0 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                            className="shrink-0 rounded-full bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
                           >
                             Open on map
                           </button>
                         </div>
 
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl border bg-card px-3 py-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Community rating</p>
-                            <div className="mt-2">
-                              <StarDisplay value={location.aggregate_profile?.overall_rating} />
-                            </div>
+                        {/* Rating + Review — single column for narrow sidebar */}
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between rounded-xl border bg-card px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Community rating</p>
+                            <StarDisplay value={location.aggregate_profile?.overall_rating} size={14} />
                           </div>
 
                           <div className="rounded-xl border bg-card px-3 py-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Your review</p>
-                            <p className="mt-2 text-sm font-semibold text-foreground">
-                              {review ? `${formatScore(review.overall_rating)} overall` : 'No review yet'}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">{reviewSnippet}</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Your review</p>
+                              <p className="text-xs font-bold text-foreground">
+                                {review ? `${formatScore(review.overall_rating)} / 5` : '—'}
+                              </p>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground leading-snug">{reviewSnippet}</p>
                           </div>
                         </div>
 
                         {aiSummary ? (
-                          <p className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-sm text-foreground/80">
+                          <p className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-xs text-foreground/80 leading-snug">
                             {aiSummary.length > 180 ? `${aiSummary.slice(0, 180)}...` : aiSummary}
                           </p>
                         ) : null}
@@ -1395,77 +1500,74 @@ export function PlacesMap() {
             <div key={selectedLocation.id} className="flex-1 space-y-6">
               {/* Header Info */}
               <div className="animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-foreground leading-tight">
-                      {selectedLocation.name}
-                    </h2>
-                    <p className="mt-2 text-sm text-muted-foreground flex items-start gap-1.5">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
-                      {selectedLocation.address || 'No address available'}
-                    </p>
-                  </div>
+                {/* Café name */}
+                <h2 className="text-xl font-bold tracking-tight text-foreground leading-tight">
+                  {selectedLocation.name}
+                </h2>
 
-                  <div className="ml-3 flex items-center gap-3">
-                    <div className="flex shrink-0 flex-col items-center justify-center rounded-2xl px-3 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Rating</span>
-                      <StarDisplay value={selectedLocation.aggregate_profile?.overall_rating} />
-                    </div>
+                {/* Rating row — compact, right below the name */}
+                <div className="mt-2">
+                  <StarDisplay value={selectedLocation.aggregate_profile?.overall_rating} size={16} />
+                </div>
 
-                    {/* Inline User Review CTA placed between rating and favorite */}
-                    <div className="flex items-center gap-2">
-                      {userReview && userReview.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setShowUserReviewDetails((v) => !v)}
-                            className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm hover:bg-muted"
-                            title="Click to view your per-category scores"
-                          >
-                            <span className="text-xs font-medium text-muted-foreground mr-2">Your rating</span>
-                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-sm font-semibold text-primary">
-                              {formatScore(userReview.overall_rating)}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReviewDraft(userReview ? reviewToDraft(userReview) : createEmptyReviewDraft());
-                              setIsReviewModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            Edit
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReviewDraft(createEmptyReviewDraft());
-                            setIsReviewModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                        >
-                          Leave review
-                        </button>
-                      )}
-                    </div>
+                {/* Address */}
+                <p className="mt-2 text-sm text-muted-foreground flex items-start gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+                  <span>{selectedLocation.address || 'No address available'}</span>
+                </p>
 
+                {/* Action bar — clearly separated */}
+                <div className="mt-4 flex items-center gap-2">
+                  {userReview && userReview.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowUserReviewDetails((v) => !v)}
+                        className="inline-flex items-center gap-1.5 rounded-full border bg-background px-3 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-muted"
+                        title="Click to view your per-category scores"
+                      >
+                        Your rating
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                          {formatScore(userReview.overall_rating)}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReviewDraft(userReview ? reviewToDraft(userReview) : createEmptyReviewDraft());
+                          setIsReviewModalOpen(true);
+                        }}
+                        className="rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        Edit
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
-                      onClick={handleToggleFavorite}
-                      aria-pressed={isFavorited}
-                      aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-                      className={`favorite-button relative inline-flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${isFavorited ? 'favorite-button--active bg-red-100 text-red-600 shadow-sm' : 'bg-muted/10 text-muted-foreground'} ${favoriteAnimating ? 'favorite-button--animating' : ''} ${favoriteSubmitting ? 'opacity-80' : ''}`}
-                      disabled={favoriteSubmitting}
+                      onClick={() => {
+                        setReviewDraft(createEmptyReviewDraft());
+                        setIsReviewModalOpen(true);
+                      }}
+                      className="rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      <span className="favorite-button__burst" aria-hidden="true" />
-                      <span className={`relative z-10 transition-transform duration-200 ${favoriteAnimating ? 'scale-110' : 'scale-100'}`}>
-                        <FavoriteHeartIcon isActive={isFavorited} />
-                      </span>
+                      Leave review
                     </button>
-                  </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleToggleFavorite}
+                    aria-pressed={isFavorited}
+                    aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                    className={`favorite-button relative ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-all duration-200 ${isFavorited ? 'favorite-button--active bg-red-100 text-red-600 shadow-sm' : 'bg-muted/10 text-muted-foreground'} ${favoriteAnimating ? 'favorite-button--animating' : ''} ${favoriteSubmitting ? 'opacity-80' : ''}`}
+                    disabled={favoriteSubmitting}
+                  >
+                    <span className="favorite-button__burst" aria-hidden="true" />
+                    <span className={`relative z-10 transition-transform duration-200 ${favoriteAnimating ? 'scale-110' : 'scale-100'}`}>
+                      <FavoriteHeartIcon isActive={isFavorited} />
+                    </span>
+                  </button>
                 </div>
               </div>
 
@@ -1514,8 +1616,42 @@ export function PlacesMap() {
                     <path d="m3.265 13.602 7.668 4.129a2.25 2.25 0 0 0 2.134 0l7.668-4.13-1.065.573-6.603 3.556a.75.75 0 0 1-.712 0l-6.603-3.556-1.065-.572Z" />
                   </svg>
                   <p className="relative z-10 text-sm leading-relaxed text-foreground/90 font-medium">
-                    {selectedLocation.aggregate_profile?.AIdescription || selectedLocation.aggregate_profile?.ai_description || 'No description available yet. Try requesting an AI analysis.'}
+                    {selectedLocation.aggregate_profile?.AIdescription || selectedLocation.aggregate_profile?.ai_description || 'No AI review has been generated for this café yet.'}
                   </p>
+                  {!selectedLocation.aggregate_profile ? (
+                    <div className="relative z-10 mt-4 space-y-3">
+                      {aiGenerationJob && ACTIVE_AI_JOB_STATUSES.has(aiGenerationJob.status) ? (
+                        <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm font-semibold text-muted-foreground">
+                          {getAIJobLabel(aiGenerationJob.status)}
+                        </div>
+                      ) : null}
+
+                      {aiGenerationJob?.status === 'failed' ? (
+                        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                          {aiGenerationJob.error || 'AI review generation failed.'}
+                        </div>
+                      ) : null}
+
+                      {aiGenerationError ? (
+                        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                          {aiGenerationError}
+                        </div>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={handleGenerateAIProfile}
+                        disabled={aiGenerationLoading || (aiGenerationJob && ACTIVE_AI_JOB_STATUSES.has(aiGenerationJob.status))}
+                        className="inline-flex items-center justify-center rounded-full border bg-background px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {aiGenerationLoading || (aiGenerationJob && ACTIVE_AI_JOB_STATUSES.has(aiGenerationJob.status))
+                          ? getAIJobLabel(aiGenerationJob?.status)
+                          : aiGenerationJob?.status === 'failed'
+                            ? 'Try again'
+                            : 'Generate AI review'}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1561,7 +1697,7 @@ export function PlacesMap() {
                 ) : null}
               </div>
 
-              
+
             </div>
           ) : (
             <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-4 rounded-2xl border border-dashed bg-muted/10 p-8 text-center text-muted-foreground animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>

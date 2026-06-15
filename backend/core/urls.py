@@ -35,8 +35,12 @@ urlpatterns = [
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+from django.views.static import serve
+
+# Serve media files in both debug and production mode for local/container development
+urlpatterns += [
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+]
 
 urlpatterns += [
     re_path(r'^(?!api/|api-auth/|admin/|media/).*$' , views.overview, name='spa-fallback'),

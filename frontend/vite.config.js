@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
     ],
-    base: process.env.NODE_ENV === 'development' ? '/' : '/static/', 
+    base: '/static/', 
 
     define: {
       'import.meta.env.VITE_MAPBOX_ACCESS_TOKEN': JSON.stringify(VITE_MAPBOX_ACCESS_TOKEN),

@@ -272,7 +272,7 @@ function AppShell() {
               />
             )}
           />
-          <Route path="/schedule" element={<Schedule />} />
+          <Route path="/schedule" element={<Schedule onProfileUpdate={refreshProfile} />} />
           <Route path="/cafes" element={<PlacesMap />} />
           <Route path="/focus" element={<FocusTab />} />
           <Route path="/planner" element={<Planner />} />

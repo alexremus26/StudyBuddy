@@ -308,3 +308,122 @@ class TaskValidationTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("due_date", response.data)
+
+
+class StreakAndGamificationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="streakuser",
+            email="streakuser@example.com",
+            password="TestPass123!",
+        )
+        self.profile = self.user.profile
+        self.assignment = Assignment.objects.create(
+            user=self.user,
+            title="Streak assignment",
+            estimated_duration_minutes=60,
+        )
+
+    def test_assignment_completed_at_set_on_completed(self):
+        """completed_at should automatically populate/depopulate based on is_completed."""
+        task = Assignment.objects.create(
+            user=self.user,
+            title="Streak test task",
+            estimated_duration_minutes=60,
+        )
+        self.assertIsNone(task.completed_at)
+
+        # Mark completed
+        task.is_completed = True
+        task.save()
+        self.assertIsNotNone(task.completed_at)
+        completed_time = task.completed_at
+
+        # Mark incomplete
+        task.is_completed = False
+        task.save()
+        self.assertIsNone(task.completed_at)
+
+    def test_streak_calculation_consecutive_days(self):
+        """Verify streak increments for consecutive days, caps on same day, and breaks on gaps."""
+        from django.utils import timezone
+        from app.utils import update_user_streak
+        from app.models import TaskBlock
+        import datetime
+
+        profile = self.user.profile
+
+        # No tasks completed -> streak 0
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 0)
+
+        # TaskBlock completed today -> streak 1
+        now = timezone.now()
+        t1 = TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=1),
+            completed=True,
+        )
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 1)
+
+        # Capping: TaskBlock 2 completed today -> streak remains 1
+        t2 = TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=now,
+            end_time=now + datetime.timedelta(hours=1),
+            completed=True,
+        )
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 1)
+
+        # TaskBlock completed yesterday -> streak 2
+        yesterday = now - datetime.timedelta(days=1)
+        t3 = TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=yesterday,
+            end_time=yesterday + datetime.timedelta(hours=1),
+            completed=True,
+        )
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 2)
+
+        # TaskBlock completed 2 days ago -> streak 3
+        two_days_ago = now - datetime.timedelta(days=2)
+        t4 = TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=two_days_ago,
+            end_time=two_days_ago + datetime.timedelta(hours=1),
+            completed=True,
+        )
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 3)
+
+        # Gap: TaskBlock completed 4 days ago (skipping 3 days ago) -> streak remains 3
+        four_days_ago = now - datetime.timedelta(days=4)
+        t5 = TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=four_days_ago,
+            end_time=four_days_ago + datetime.timedelta(hours=1),
+            completed=True,
+        )
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 3)
+
+        # Delete yesterday's task block -> streak breaks to 1 (since today's blocks are still complete)
+        t3.delete()
+        update_user_streak(self.user)
+        profile.refresh_from_db()
+        self.assertEqual(profile.current_streak, 1)

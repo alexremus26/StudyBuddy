@@ -330,6 +330,10 @@ export async function deleteTaskBlock(taskBlockId) {
   return deleteJson(`/api/schedule/task-blocks/${taskBlockId}/`);
 }
 
+export async function updateTaskBlock(taskBlockId, payload) {
+  return patchJson(`/api/schedule/task-blocks/${taskBlockId}/`, payload);
+}
+
 export async function deleteAllTaskBlocks() {
   const token = getAuthToken();
   const response = await fetch('/api/schedule/task-blocks/delete-all/', {

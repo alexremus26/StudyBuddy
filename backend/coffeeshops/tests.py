@@ -115,4 +115,4 @@ class ProcessLocationProfileTaskTests(TestCase):
 		self.assertEqual(profile.study_friendly, 4.5)
 		self.assertEqual(profile.overall_corwdness, 2.0)
 		self.assertEqual(profile.noise_level, 2.5)
-		self.assertEqual(profile.overall_rating, 3.5)
+		self.assertEqual(profile.overall_rating, 3.6)

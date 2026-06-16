@@ -88,6 +88,9 @@ def user_detail(request, pk, format=None):
 @permission_classes([permissions.IsAuthenticated])
 def me_overview(request):
     profile, created = UserProfile.objects.get_or_create(user=request.user)
+    from .utils import update_user_streak
+    update_user_streak(request.user)
+    profile.refresh_from_db()
     serializer = UserMeSerializer(profile, context={"request": request})
     return Response(serializer.data)
 

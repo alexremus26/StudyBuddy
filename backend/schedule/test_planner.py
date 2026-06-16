@@ -58,9 +58,9 @@ class PlannerApiTests(APITestCase):
         plan = GeneratedPlan.objects.get(user=self.user)
         self.assertEqual(plan.status, GeneratedPlan.STATUS_DRAFT)
         
-        # Verify draft blocks (2 blocks generated)
+        # Verify draft blocks (3 blocks generated because chunk size is capped at 60 mins and total study mins is 180)
         draft_blocks = plan.draft_blocks.all()
-        self.assertEqual(draft_blocks.count(), 2)
+        self.assertEqual(draft_blocks.count(), 3)
         
     def test_planner_drafts_list(self):
         plan = GeneratedPlan.objects.create(

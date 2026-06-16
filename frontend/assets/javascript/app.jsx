@@ -7,6 +7,7 @@ import { Schedule } from './components/Schedule';
 import { Planner } from './components/Planner';
 import { PlacesMap } from './components/PlacesMap';
 import { LandingPage } from './components/LandingPage';
+import { Achievements } from './components/Achievements';
 import {
   getMe,
   loginUser,
@@ -109,8 +110,10 @@ function AppShell() {
       ? 'cafes'
     : currentPath === '/focus'
       ? 'focus'
-      : currentPath === '/planner'
-        ? 'planner'
+    : currentPath === '/planner'
+      ? 'planner'
+      : currentPath === '/achievements'
+        ? 'achievements'
         : 'home';
 
   const navigateToTab = (tabId) => {
@@ -131,6 +134,11 @@ function AppShell() {
 
     if (tabId === 'cafes') {
       navigate('/cafes');
+      return;
+    }
+
+    if (tabId === 'achievements') {
+      navigate('/achievements');
       return;
     }
 
@@ -276,6 +284,7 @@ function AppShell() {
           <Route path="/cafes" element={<PlacesMap />} />
           <Route path="/focus" element={<FocusTab />} />
           <Route path="/planner" element={<Planner />} />
+          <Route path="/achievements" element={<Achievements />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

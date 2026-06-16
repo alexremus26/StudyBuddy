@@ -427,3 +427,75 @@ class StreakAndGamificationTests(APITestCase):
         update_user_streak(self.user)
         profile.refresh_from_db()
         self.assertEqual(profile.current_streak, 1)
+
+
+class AchievementsTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="achiever",
+            email="achiever@example.com",
+            password="TestPass123!",
+        )
+        self.profile = self.user.profile
+        self.assignment = Assignment.objects.create(
+            user=self.user,
+            title="Achievement task",
+            estimated_duration_minutes=60,
+        )
+
+    def test_achievements_awarded_on_task_block_completion(self):
+        """TaskBlock completion should award 'First Step' and update study hours."""
+        from django.utils import timezone
+        from app.models import TaskBlock, UserAchievement
+        import datetime
+
+        self.assertEqual(self.user.achievements.count(), 0)
+        self.assertEqual(self.profile.total_study_hours, 0)
+
+        # Complete a 2-hour study session block
+        now = timezone.now()
+        t1 = TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=now - datetime.timedelta(hours=2),
+            end_time=now,
+            completed=True,
+        )
+
+        self.profile.refresh_from_db()
+        # Should update stats: 2 hours completed
+        self.assertEqual(self.profile.total_study_hours, 2)
+        # Should award "First Step" achievement
+        self.assertTrue(self.user.achievements.filter(achievement__name="First Step").exists())
+
+    def test_achievements_api_list_view(self):
+        """Achievements endpoint should return all achievements with earned states."""
+        from django.urls import reverse
+        from django.utils import timezone
+        from app.models import TaskBlock
+
+        self.client.force_authenticate(user=self.user)
+
+        # Complete one session to get "First Step"
+        now = timezone.now()
+        TaskBlock.objects.create(
+            user=self.user,
+            assignment=self.assignment,
+            start_time=now,
+            end_time=now + timezone.timedelta(hours=1),
+            completed=True,
+        )
+
+        response = self.client.get(reverse("achievement-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 6) # At least 6 default achievements seeded
+
+        # Verify "First Step" is earned and has an earned_at date
+        first_step = next(a for a in response.data if a["name"] == "First Step")
+        self.assertTrue(first_step["earned"])
+        self.assertIsNotNone(first_step["earned_at"])
+
+        # Verify other achievements are not earned
+        streak_starter = next(a for a in response.data if a["name"] == "Streak Starter")
+        self.assertFalse(streak_starter["earned"])
+        self.assertIsNone(streak_starter["earned_at"])

@@ -179,6 +179,14 @@ export async function getMe() {
   return data;
 }
 
+export async function getAchievements() {
+  const { data, error, response } = await apiClient.GET('/api/achievements/');
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
 export async function listAssignments() {
   const { data, error, response } = await apiClient.GET('/api/schedule/assignments/');
   if (error) {

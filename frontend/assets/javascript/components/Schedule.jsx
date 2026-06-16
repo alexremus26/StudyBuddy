@@ -13,6 +13,7 @@ import {
   listTaskBlocks,
   createTaskBlock,
   deleteTaskBlock,
+  updateTaskBlock,
   deleteAllTaskBlocks,
   parseScheduleText,
   listPlanDrafts,
@@ -572,7 +573,7 @@ function getParserBadge(source) {
   };
 }
 
-export function Schedule() {
+export function Schedule({ onProfileUpdate = () => {} }) {
   const [assignments, setAssignments] = useState([]);
   const [schoolClasses, setSchoolClasses] = useState([]);
   const [taskBlocks, setTaskBlocks] = useState([]);
@@ -642,6 +643,7 @@ export function Schedule() {
       await createAssignment(formData);
       setShowTaskForm(false);
       fetchScheduleData();
+      onProfileUpdate();
     } catch (err) {
       setError(err.message || 'Failed to create assignment');
     }
@@ -666,6 +668,7 @@ export function Schedule() {
       setError(null);
       await deleteAssignment(taskId);
       fetchScheduleData();
+      onProfileUpdate();
     } catch (err) {
       setError(err.message || 'Failed to delete assignment');
     }
@@ -841,11 +844,23 @@ export function Schedule() {
     }
   };
 
+  const handleToggleTaskBlockCompletion = async (taskBlockId, currentStatus) => {
+    try {
+      setError(null);
+      await updateTaskBlock(taskBlockId, { completed: !currentStatus });
+      fetchScheduleData();
+      onProfileUpdate();
+    } catch (err) {
+      setError(err.message || 'Failed to update study session');
+    }
+  };
+
   const handleToggleAssignmentCompletion = async (assignmentId, currentStatus) => {
     try {
       setError(null);
       await updateAssignment(assignmentId, { is_completed: !currentStatus });
       fetchScheduleData();
+      onProfileUpdate();
     } catch (err) {
       setError(err.message || 'Failed to update assignment');
     }
@@ -858,6 +873,7 @@ export function Schedule() {
       setError(null);
       await deleteAllAssignments();
       fetchScheduleData();
+      onProfileUpdate();
     } catch (err) {
       setError(err.message || 'Failed to delete all assignments');
     }
@@ -1105,6 +1121,7 @@ export function Schedule() {
             taskBlocks={taskBlocks}
             onDeleteSchoolClass={handleDeleteSchoolClass}
             onDeleteTaskBlock={handleDeleteTaskBlock}
+            onToggleTaskBlockCompletion={handleToggleTaskBlockCompletion}
           />
 
           <section className="grid gap-4 lg:grid-cols-2">

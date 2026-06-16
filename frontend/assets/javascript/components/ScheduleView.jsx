@@ -37,7 +37,7 @@ const TrashIcon = () => (
   </svg>
 );
 
-export function ScheduleView({ schoolClasses, taskBlocks, onDeleteSchoolClass, onDeleteTaskBlock }) {
+export function ScheduleView({ schoolClasses, taskBlocks, onDeleteSchoolClass, onDeleteTaskBlock, onToggleTaskBlockCompletion }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [hoveredId, setHoveredId] = useState(null);
 
@@ -86,6 +86,7 @@ export function ScheduleView({ schoolClasses, taskBlocks, onDeleteSchoolClass, o
         rawId: tb.id,
         type: 'task',
         isDraft: tb.id.toString().startsWith('draft'),
+        completed: tb.completed,
         title: tb.assignment?.title || 'Assignment block',
         category: tb.assignment?.category || 'other',
         timeLabel: `${blockDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} - ${blockEnd.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`,
@@ -185,7 +186,9 @@ export function ScheduleView({ schoolClasses, taskBlocks, onDeleteSchoolClass, o
                             ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10'
                             : event.isDraft 
                               ? 'bg-indigo-500/5 border-dashed border-indigo-500/40 opacity-70 scale-95'
-                              : `${CATEGORY_COLORS[event.category] || CATEGORY_COLORS.other} shadow-sm`
+                              : event.completed
+                                ? 'bg-green-500/5 border-green-500/20 opacity-70'
+                                : `${CATEGORY_COLORS[event.category] || CATEGORY_COLORS.other} shadow-sm`
                           }`}
                       >
                         {isHovered && !event.isDraft && (event.type === 'school' ? onDeleteSchoolClass : onDeleteTaskBlock) && (
@@ -201,11 +204,21 @@ export function ScheduleView({ schoolClasses, taskBlocks, onDeleteSchoolClass, o
                           </button>
                         )}
 
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                          <p className={`font-bold leading-tight line-clamp-2 break-words ${event.isDraft ? 'italic' : ''}`}>
-                            {event.isDraft ? '[PREVIEW] ' : ''}{event.title}
-                          </p>
-                          <p className="text-[9px] font-medium opacity-70">{event.timeLabel}</p>
+                        <div className="flex items-start gap-1.5 min-w-0">
+                          {!event.isDraft && event.type === 'task' && (
+                            <input
+                              type="checkbox"
+                              checked={event.completed || false}
+                              onChange={() => onToggleTaskBlockCompletion(event.rawId, event.completed)}
+                              className="w-3.5 h-3.5 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 shrink-0 cursor-pointer"
+                            />
+                          )}
+                          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                            <p className={`font-bold leading-tight line-clamp-2 break-words ${event.isDraft ? 'italic' : ''} ${event.completed ? 'line-through text-muted-foreground font-normal' : ''}`}>
+                              {event.isDraft ? '[PREVIEW] ' : ''}{event.title}
+                            </p>
+                            <p className="text-[9px] font-medium opacity-70">{event.timeLabel}</p>
+                          </div>
                         </div>
 
                         {event.type === 'school' && (

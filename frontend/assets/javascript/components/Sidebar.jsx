@@ -32,6 +32,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
     { id: 'planner', label: 'AI Planner' },
     { id: 'cafes', label: 'Find My Café' },
     { id: 'focus', label: 'Focus Sessions' },
+    { id: 'achievements', label: 'Achievements' },
   ];
 
   return (
@@ -108,7 +109,27 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
           <div className="flex-1">
             {isLoggedIn ? (
               <>
-                <p className="text-sm font-semibold text-sidebar-foreground">{profile?.username}</p>
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <p className="text-sm font-semibold text-sidebar-foreground truncate max-w-[120px]" title={profile?.username}>
+                    {profile?.username}
+                  </p>
+                  <div className="flex gap-1 items-center shrink-0">
+                    {profile?.streak > 0 && (
+                      <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 text-[10px] font-bold animate-pulse dark:text-amber-500" title={`${profile.streak} days streak!`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-amber-500 shrink-0">
+                          <path fillRule="evenodd" d="M12.969 2.18a.75.75 0 0 1 .218.812l-1.921 5.379 4.148-3.771a.75.75 0 0 1 1.22.428c.119.53.181 1.08.181 1.645 0 3.73-2.585 7.153-6.145 8.101a.75.75 0 0 1-.407-.1-.75.75 0 0 1-.336-.599l-.025-2.015-1.636 1.487A7.5 7.5 0 0 1 3.5 12.01c0-1.765.61-3.387 1.635-4.664a.75.75 0 0 1 1.15.04l2.42 2.904 1.833-5.132a.75.75 0 0 1 .43-.443Z" clipRule="evenodd" />
+                          <path d="M19.38 10.162a.75.75 0 0 1 .1.75c-.244.643-.374 1.332-.374 2.051 0 3.65-2.88 6.67-6.52 7.004a.75.75 0 1 1-.137-1.493 5.513 5.513 0 0 0 4.654-5.011 5.72 5.72 0 0 0-.256-1.579.75.75 0 0 1 .633-.922Z" />
+                        </svg>
+                        <span>{profile.streak}</span>
+                      </div>
+                    )}
+                    {profile?.study_hours > 0 && (
+                      <div className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 text-[10px] font-bold dark:text-indigo-400" title={`${profile.study_hours} study hours`}>
+                        <span>{profile.study_hours}h</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground">Profile</p>
                 <button
                   type="button"

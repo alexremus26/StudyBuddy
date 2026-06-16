@@ -2,7 +2,7 @@ from django.contrib.auth.models import Group, User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
-from .models import Assignment, UserProfile
+from .models import Assignment, UserProfile, Achievement
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 
@@ -94,3 +94,25 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             password=validated_data['password']
         )
+
+
+class AchievementSerializer(serializers.ModelSerializer):
+    earned = serializers.SerializerMethodField()
+    earned_at = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Achievement
+        fields = ['id', 'name', 'description', 'rarity', 'points_awarded', 'earned', 'earned_at']
+
+    def get_earned(self, obj):
+        user = self.context.get('request').user
+        if not user or user.is_anonymous:
+            return False
+        return obj.earned_by.filter(user=user).exists()
+
+    def get_earned_at(self, obj):
+        user = self.context.get('request').user
+        if not user or user.is_anonymous:
+            return None
+        earned = obj.earned_by.filter(user=user).first()
+        return earned.earned_at.isoformat() if earned else None

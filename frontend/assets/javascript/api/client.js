@@ -179,6 +179,14 @@ export async function getMe() {
   return data;
 }
 
+export async function getAchievements() {
+  const { data, error, response } = await apiClient.GET('/api/achievements/');
+  if (error) {
+    throw toApiError(error, response);
+  }
+  return data;
+}
+
 export async function listAssignments() {
   const { data, error, response } = await apiClient.GET('/api/schedule/assignments/');
   if (error) {
@@ -328,6 +336,10 @@ export async function createTaskBlock(payload) {
 
 export async function deleteTaskBlock(taskBlockId) {
   return deleteJson(`/api/schedule/task-blocks/${taskBlockId}/`);
+}
+
+export async function updateTaskBlock(taskBlockId, payload) {
+  return patchJson(`/api/schedule/task-blocks/${taskBlockId}/`, payload);
 }
 
 export async function deleteAllTaskBlocks() {

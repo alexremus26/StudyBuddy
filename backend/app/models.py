@@ -49,9 +49,18 @@ class Assignment(models.Model):
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
     priority = models.IntegerField(choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
     created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         db_table = 'app_task'
+
+    def save(self, *args, **kwargs):
+        if self.is_completed and not self.completed_at:
+            from django.utils import timezone
+            self.completed_at = timezone.now()
+        elif not self.is_completed and self.completed_at:
+            self.completed_at = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title

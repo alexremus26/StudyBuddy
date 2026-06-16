@@ -486,6 +486,10 @@ class ScheduleParser:
         blocks = []
         failure_type = ""
         
+        if genai is None:
+            warnings.append("google.generativeai package not installed")
+            return [], warnings, model_output, "ImportError"
+            
         try:
             prompt = (
                 "Extract the school schedule from this OCR text into a structured JSON format. "

@@ -6,7 +6,7 @@ from rest_framework import status, permissions
 from rest_framework.decorators import permission_classes
 from rest_framework.authtoken.models import Token
 from drf_spectacular.utils import OpenApiTypes, extend_schema
-from .serializers import UserSerializer, UserMeSerializer, UserProfileSerializer, UserRegisterSerializer
+from .serializers import UserSerializer, UserMeSerializer, UserProfileSerializer, UserRegisterSerializer, AchievementSerializer
 from .models import UserProfile
 
 
@@ -88,6 +88,9 @@ def user_detail(request, pk, format=None):
 @permission_classes([permissions.IsAuthenticated])
 def me_overview(request):
     profile, created = UserProfile.objects.get_or_create(user=request.user)
+    from .utils import update_user_streak
+    update_user_streak(request.user)
+    profile.refresh_from_db()
     serializer = UserMeSerializer(profile, context={"request": request})
     return Response(serializer.data)
 
@@ -151,3 +154,21 @@ def user_register(request):
 
 def overview(request):
     return render(request, "index.html")
+
+
+@extend_schema(
+    methods=["GET"],
+    operation_id="achievements_list",
+    responses={200: AchievementSerializer(many=True)},
+)
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def achievement_list(request):
+    from .models import Achievement
+    from .serializers import AchievementSerializer
+    from .utils import seed_default_achievements
+    
+    seed_default_achievements()
+    achievements = Achievement.objects.all().order_by("-points_awarded")
+    serializer = AchievementSerializer(achievements, many=True, context={"request": request})
+    return Response(serializer.data)

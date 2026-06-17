@@ -70,14 +70,12 @@ def _call_ollama(prompt: str, location_id: int) -> str:
                             "AIdescription": {"type": "string"},
                             "laptop_friendly": {"type": "number"},
                             "study_friendly": {"type": "number"},
-                            "overall_corwdness": {"type": "number"},
                             "noise_level": {"type": "number"},
                         },
                         "required": [
                             "AIdescription",
                             "laptop_friendly",
                             "study_friendly",
-                            "overall_corwdness",
                             "noise_level",
                         ],
                     },
@@ -146,7 +144,7 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
         "You are generating a structured cafe profile from customer reviews.\n"
         "This app helps university students find good study spots.\n\n"
         "Return ONLY valid JSON with exactly these keys:\n"
-        "  AIdescription, laptop_friendly, study_friendly, overall_corwdness, noise_level\n\n"
+        "  AIdescription, laptop_friendly, study_friendly, noise_level\n\n"
         "CRITICAL: All scores MUST use ONE DECIMAL PLACE (e.g., 3.7, 2.4, 4.1).\n"
         "Prefer granular scores (non-whole numbers) — use whole numbers (1.0, 2.0, 3.0, 4.0, 5.0) sparingly, only when the review evidence is extremely clear-cut.\n\n"
         "Score definitions (0.0 to 5.0):\n"
@@ -162,12 +160,6 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
         "    3.0-3.9 = moderate: occasional noise, mixed environment\n"
         "    1.5-2.9 = poor: consistently loud, not welcoming\n"
         "    0.0-1.4 = terrible: loud music, rushed service, not for studying\n"
-        "  overall_corwdness — How spacious and uncrowded does this place feel?\n"
-        "    4.8-5.0 = excellent: very spacious, always easy to find seating\n"
-        "    4.0-4.7 = good: spacious enough, rarely crowded\n"
-        "    3.0-3.9 = moderate: normal foot traffic, sometimes hard to find seats\n"
-        "    1.5-2.9 = poor: often crowded, limited seating availability\n"
-        "    0.0-1.4 = terrible: perpetually packed, barely room to stand\n"
         "  noise_level — How quiet is this place? (inverse of busyness)\n"
         "    4.8-5.0 = excellent: library-like silence, minimal background noise\n"
         "    4.0-4.7 = good: quiet, only soft background conversations\n"
@@ -209,14 +201,13 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
     logger.info(
         "Successfully generated AI profile for location %s (%s): scores=%s",
         location.id, location.name,
-        {k: data.get(k) for k in ["laptop_friendly", "study_friendly", "noise_level", "overall_corwdness"]},
+        {k: data.get(k) for k in ["laptop_friendly", "study_friendly", "noise_level"]},
     )
 
     return {
         "AIdescription": str(data.get("AIdescription", "")).strip()[:255],
         "laptop_friendly": _clamp_score(data.get("laptop_friendly")),
         "study_friendly": _clamp_score(data.get("study_friendly")),
-        "overall_corwdness": _clamp_score(data.get("overall_corwdness")),
         "noise_level": _clamp_score(data.get("noise_level")),
         "generation_source": f"ollama-{settings.OLLAMA_MODEL}",
         "generation_error": "",

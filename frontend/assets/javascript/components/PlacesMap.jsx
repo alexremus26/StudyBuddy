@@ -11,6 +11,8 @@ import {
   generateLocationAIProfile,
   getLocationAIProfileGeneration,
   getAuthToken,
+  generateLocationBestTime,
+  getLocationBestTimeStatus,
 } from '../api/client';
 
 const MAPBOX_STYLES = {
@@ -76,6 +78,15 @@ const EMPTY_REVIEW_DRAFT = {
 };
 
 const ACTIVE_AI_JOB_STATUSES = new Set(['queued', 'fetching_reviews', 'scoring']);
+
+const ACTIVE_BESTTIME_JOB_STATUSES = new Set(['queued', 'fetching']);
+
+function getBestTimeJobLabel(status) {
+  if (status === 'fetching') return 'Fetching crowdness...';
+  if (status === 'queued') return 'Queued...';
+  if (status === 'failed') return 'Fetch failed';
+  return 'Checking...';
+}
 
 function getAIJobLabel(status) {
   if (status === 'fetching_reviews') return 'Fetching reviews...';
@@ -664,7 +675,6 @@ function getSelectedSummary(location) {
     { label: 'Overall', value: formatScore(profile.overall_rating) },
     { label: 'Laptop', value: formatScore(profile.laptop_friendly) },
     { label: 'Study', value: formatScore(profile.study_friendly) },
-    { label: 'Crowd', value: formatScore(profile.overall_crowdness) },
     { label: 'Noise', value: formatScore(profile.noise_level) },
   ];
 }
@@ -789,6 +799,10 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
   const [aiGenerationJob, setAiGenerationJob] = useState(null);
   const [aiGenerationLoading, setAiGenerationLoading] = useState(false);
   const [aiGenerationError, setAiGenerationError] = useState(null);
+
+  const [bestTimeJob, setBestTimeJob] = useState(null);
+  const [bestTimeLoading, setBestTimeLoading] = useState(false);
+  const [bestTimeError, setBestTimeError] = useState(null);
 
   // Simplified favorite toggle handler — keeps selectedLocation.is_favorited in sync
   const handleToggleFavorite = async () => {
@@ -920,6 +934,32 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
       void checkJobStatus();
     }
 
+    async function checkBestTimeJobStatus() {
+      try {
+        const payload = await getLocationBestTimeStatus(selectedLocation.id);
+        if (!active) return;
+        if (payload?.job) {
+          setBestTimeJob(payload.job);
+          if (ACTIVE_BESTTIME_JOB_STATUSES.has(payload.job.status)) {
+            window.dispatchEvent(
+              new CustomEvent('studybuddy-start-polling-besttime', {
+                detail: {
+                  locationId: selectedLocation.id,
+                  locationName: selectedLocation.name
+                }
+              })
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check initial BestTime job status', err);
+      }
+    }
+
+    setBestTimeJob(null);
+    setBestTimeError(null);
+    void checkBestTimeJobStatus();
+
     return () => {
       active = false;
     };
@@ -946,6 +986,40 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
       setAiGenerationError(err?.message || 'Failed to start AI review generation.');
     } finally {
       setAiGenerationLoading(false);
+    }
+  };
+
+  const handleCheckCrowdness = async () => {
+    if (!selectedLocation || bestTimeLoading) {
+      return;
+    }
+
+    if (!getAuthToken()) {
+      setBestTimeError('Sign in to check crowdness level.');
+      return;
+    }
+
+    setBestTimeLoading(true);
+    setBestTimeError(null);
+
+    try {
+      const payload = await generateLocationBestTime(selectedLocation.id);
+      setBestTimeJob(payload.job);
+      if (payload?.job && ACTIVE_BESTTIME_JOB_STATUSES.has(payload.job.status)) {
+        window.dispatchEvent(
+          new CustomEvent('studybuddy-start-polling-besttime', {
+            detail: {
+              locationId: selectedLocation.id,
+              locationName: selectedLocation.name
+            }
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Failed to start BestTime crowdness check', err);
+      setBestTimeError(err?.message || 'Failed to start crowdness check.');
+    } finally {
+      setBestTimeLoading(false);
     }
   };
 
@@ -976,6 +1050,43 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
     return () => {
       window.removeEventListener('studybuddy-job-progress', handleJobProgress);
       window.removeEventListener('studybuddy-job-completed', handleJobCompleted);
+    };
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    const handleBestTimeProgress = (e) => {
+      const { locationId, job } = e.detail;
+      if (locationId === selectedLocationId) {
+        setBestTimeJob(job);
+      }
+    };
+
+    const handleBestTimeCompleted = (e) => {
+      const { locationId, besttime_venue_id, besttime_live_busyness, besttime_live_fetched_at, besttime_forecast_data, job } = e.detail;
+      setLocations((prev) =>
+        prev.map((loc) =>
+          loc.id === locationId
+            ? {
+                ...loc,
+                besttime_venue_id,
+                besttime_live_busyness,
+                besttime_live_fetched_at,
+                besttime_forecast_data,
+              }
+            : loc
+        )
+      );
+      if (locationId === selectedLocationId) {
+        setBestTimeJob(job);
+      }
+    };
+
+    window.addEventListener('studybuddy-besttime-progress', handleBestTimeProgress);
+    window.addEventListener('studybuddy-besttime-completed', handleBestTimeCompleted);
+
+    return () => {
+      window.removeEventListener('studybuddy-besttime-progress', handleBestTimeProgress);
+      window.removeEventListener('studybuddy-besttime-completed', handleBestTimeCompleted);
     };
   }, [selectedLocationId]);
 
@@ -1669,13 +1780,52 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
                 </h2>
 
                 {/* Rating row — compact, right below the name */}
-                <div className="mt-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   {hasAIReview(selectedLocation) ? (
                     <StarDisplay value={selectedLocation.aggregate_profile?.overall_rating} size={16} />
                   ) : (
                     <div className="inline-flex items-center gap-2 rounded-full border bg-muted/20 px-3 py-1 text-xs font-semibold text-muted-foreground">
                       <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 pending-pulse-dot" />
                       <span>Pending AI review</span>
+                    </div>
+                  )}
+
+                  {selectedLocation.besttime_live_busyness !== null && selectedLocation.besttime_live_busyness !== undefined && (
+                    <div
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold shadow-sm transition-colors border"
+                      style={{
+                        backgroundColor:
+                          selectedLocation.besttime_live_busyness <= 35
+                            ? 'rgba(16,185,129,0.1)'
+                            : selectedLocation.besttime_live_busyness <= 70
+                              ? 'rgba(245,158,11,0.1)'
+                              : 'rgba(239,68,68,0.1)',
+                        borderColor:
+                          selectedLocation.besttime_live_busyness <= 35
+                            ? '#10b981'
+                            : selectedLocation.besttime_live_busyness <= 70
+                              ? '#f59e0b'
+                              : '#ef4444',
+                        color:
+                          selectedLocation.besttime_live_busyness <= 35
+                            ? '#10b981'
+                            : selectedLocation.besttime_live_busyness <= 70
+                              ? '#f59e0b'
+                              : '#ef4444',
+                      }}
+                    >
+                      <span
+                        className="inline-block h-1.5 w-1.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            selectedLocation.besttime_live_busyness <= 35
+                              ? '#10b981'
+                              : selectedLocation.besttime_live_busyness <= 70
+                                ? '#f59e0b'
+                                : '#ef4444',
+                        }}
+                      />
+                      Live: {selectedLocation.besttime_live_busyness}%
                     </div>
                   )}
                 </div>
@@ -1795,6 +1945,115 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
                     <p className="mt-1.5 text-xs text-muted-foreground/70">Request an AI review below to unlock vibe scores.</p>
                   </div>
                 )}
+              </div>
+
+              {/* Live Crowdness */}
+              <div className="animate-slide-up opacity-0" style={{ animationDelay: '150ms' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Live Crowdness</p>
+                  {selectedLocation.besttime_live_fetched_at && (
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#10b981] animate-ping" />
+                      Updated: {new Date(selectedLocation.besttime_live_fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border bg-muted/20 p-4 shadow-sm transition-colors hover:bg-muted/30 relative overflow-hidden">
+                  {bestTimeJob && ACTIVE_BESTTIME_JOB_STATUSES.has(bestTimeJob.status) ? (
+                    <div className="space-y-3 py-1">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 animate-pulse">
+                          <span className="material-symbols-outlined text-[18px]">sync</span>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground leading-none">Checking Crowdness</h4>
+                          <p className="text-[10px] text-muted-foreground mt-1 font-medium">{getBestTimeJobLabel(bestTimeJob.status)}</p>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full animate-pulse w-2/3" />
+                      </div>
+                    </div>
+                  ) : selectedLocation.besttime_live_busyness !== null && selectedLocation.besttime_live_busyness !== undefined ? (
+                    <div className="space-y-3.5">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-block h-2 w-2 rounded-full"
+                            style={{
+                              backgroundColor:
+                                selectedLocation.besttime_live_busyness <= 35
+                                  ? '#10b981'
+                                  : selectedLocation.besttime_live_busyness <= 70
+                                    ? '#f59e0b'
+                                    : '#ef4444',
+                            }}
+                          />
+                          <span className="text-xs font-bold text-foreground">
+                            {selectedLocation.besttime_live_busyness <= 35
+                              ? 'Quiet / Chill Vibe'
+                              : selectedLocation.besttime_live_busyness <= 70
+                                ? 'Moderately Busy'
+                                : 'Very Busy / Crowded'}
+                          </span>
+                        </div>
+                        <span className="text-xs font-black text-foreground">{selectedLocation.besttime_live_busyness}%</span>
+                      </div>
+
+                      <div className="h-2 w-full rounded-full bg-border overflow-hidden relative">
+                        <div
+                          className="h-full rounded-full score-bar-fill transition-all duration-500"
+                          style={{
+                            width: `${Math.min(100, selectedLocation.besttime_live_busyness)}%`,
+                            backgroundColor:
+                              selectedLocation.besttime_live_busyness <= 35
+                                ? '#10b981'
+                                : selectedLocation.besttime_live_busyness <= 70
+                                  ? '#f59e0b'
+                                  : '#ef4444',
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1.5 border-t border-muted-foreground/10">
+                        <span className="text-[10px] text-muted-foreground font-medium">
+                          Weekly peaks & quiet hours analyzed.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCheckCrowdness}
+                          disabled={bestTimeLoading}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#10b981] dark:text-[#34d399] hover:underline cursor-pointer border-none bg-none"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">refresh</span>
+                          <span>Update</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-3 space-y-3">
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Real-time crowdness data is not cached for this venue yet.
+                      </p>
+                      {bestTimeError && (
+                        <p className="text-xs text-destructive font-semibold flex items-center justify-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          <span>{bestTimeError}</span>
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleCheckCrowdness}
+                        disabled={bestTimeLoading}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">query_stats</span>
+                        <span>Check Live Crowdness</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* AI Overview */}

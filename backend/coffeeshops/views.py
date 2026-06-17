@@ -8,13 +8,14 @@ from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 
 from app.models import Assignment
-from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace
+from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace, BestTimeCrowdnessJob
 from .serializers import (
     AIAggregateProfileSummarySerializer,
     AIProfileGenerationJobSerializer,
     LocationMapSerializer,
     UserReviewSerializer,
     UserFavPlaceSerializer,
+    BestTimeCrowdnessJobSerializer,
 )
 from .services import ai_study_recommender
 
@@ -180,6 +181,60 @@ def generate_location_ai_profile(request, location_id: int):
     return Response(
         _generation_payload(location, job=job),
         status=status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK,
+    )
+
+
+def _active_besttime_job(location: Location):
+    return (
+        location.besttime_jobs.filter(status__in=BestTimeCrowdnessJob.ACTIVE_STATUSES)
+        .order_by("-updated_at")
+        .first()
+    )
+
+
+def _besttime_payload(location: Location, job=None):
+    if job is None:
+        job = _active_besttime_job(location) or location.besttime_jobs.order_by("-updated_at").first()
+
+    return {
+        "location_id": location.id,
+        "besttime_venue_id": location.besttime_venue_id,
+        "besttime_live_busyness": location.besttime_live_busyness,
+        "besttime_live_fetched_at": location.besttime_live_fetched_at.isoformat() if location.besttime_live_fetched_at else None,
+        "besttime_forecast_data": location.besttime_forecast_data,
+        "job": BestTimeCrowdnessJobSerializer(job).data if job else None,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def location_besttime_status(request, location_id: int):
+    location = get_object_or_404(Location, id=location_id)
+    return Response(_besttime_payload(location), status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def generate_location_besttime_crowdness(request, location_id: int):
+    location = get_object_or_404(Location, id=location_id)
+    
+    active_job = _active_besttime_job(location)
+    if active_job:
+        return Response(_besttime_payload(location, job=active_job), status=status.HTTP_200_OK)
+
+    job = BestTimeCrowdnessJob.objects.create(
+        location=location,
+        status=BestTimeCrowdnessJob.STATUS_QUEUED,
+    )
+    
+    from .tasks import fetch_besttime_crowdness_task
+    
+    async_result = fetch_besttime_crowdness_task.delay(location.id, job.id)
+    job.mark_status(BestTimeCrowdnessJob.STATUS_QUEUED, task_id=async_result.id)
+    
+    return Response(
+        _besttime_payload(location, job=job),
+        status=status.HTTP_202_ACCEPTED,
     )
 
 

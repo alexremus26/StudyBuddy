@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace
+from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace, BestTimeCrowdnessJob
 
 
 class AIAggregateProfileSummarySerializer(serializers.Serializer):
@@ -8,7 +8,6 @@ class AIAggregateProfileSummarySerializer(serializers.Serializer):
     ai_description = serializers.CharField(source="AIdescription", allow_blank=True, allow_null=True, read_only=True)
     laptop_friendly = serializers.FloatField(read_only=True)
     study_friendly = serializers.FloatField(read_only=True)
-    overall_crowdness = serializers.FloatField(source="overall_corwdness", read_only=True)
     noise_level = serializers.FloatField(read_only=True)
     overall_rating = serializers.FloatField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
@@ -19,7 +18,7 @@ class LocationSummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Location
-        fields = ["id", "name", "address", "coordinates"]
+        fields = ["id", "name", "address", "coordinates", "besttime_venue_id", "besttime_live_busyness", "besttime_live_fetched_at", "besttime_forecast_data"]
 
     def get_coordinates(self, obj):
         if obj.coordinates is None:
@@ -47,6 +46,10 @@ class LocationMapSerializer(serializers.ModelSerializer):
             "aggregate_profile",
             "current_user_review",
             "is_favorited",
+            "besttime_venue_id",
+            "besttime_live_busyness",
+            "besttime_live_fetched_at",
+            "besttime_forecast_data",
         ]
 
     def get_coordinates(self, obj):
@@ -96,6 +99,21 @@ class AIProfileGenerationJobSerializer(serializers.ModelSerializer):
             "process_task_id",
             "fetch_task_id",
             "score_task_id",
+            "error",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class BestTimeCrowdnessJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BestTimeCrowdnessJob
+        fields = (
+            "id",
+            "location",
+            "status",
+            "task_id",
             "error",
             "created_at",
             "updated_at",

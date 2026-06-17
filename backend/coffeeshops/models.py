@@ -19,6 +19,12 @@ class Location(models.Model):
 	coordinates = gis_models.PointField(null=True, blank=True, srid=4326)
 	status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=Pending)
 
+	# BestTime fields
+	besttime_venue_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+	besttime_live_busyness = models.IntegerField(null=True, blank=True)
+	besttime_live_fetched_at = models.DateTimeField(null=True, blank=True)
+	besttime_forecast_data = models.JSONField(null=True, blank=True)
+
 	class Meta:
 		db_table = "app_location"
 
@@ -83,7 +89,6 @@ class AIAggregateProfile(models.Model):
 	AIdescription = models.TextField(max_length=255, blank=True, null=True)
 	laptop_friendly = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
 	study_friendly = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
-	overall_corwdness = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
 	noise_level = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
 	overall_rating = models.FloatField(validators=[MinValueValidator(0), MaxValueValidator(5)], default=2.5)
 	created_at = models.DateTimeField(auto_now_add=True)
@@ -93,10 +98,9 @@ class AIAggregateProfile(models.Model):
 	
 	def update_overall_rating(self):
 		self.overall_rating = round(
-			self.study_friendly    * 0.35
+			self.study_friendly    * 0.40
 			+ self.noise_level     * 0.35
 			+ self.laptop_friendly * 0.25
-			+ self.overall_corwdness * 0.05
 		, 1)
 		self.save(update_fields=["overall_rating"])
 		return self.overall_rating
@@ -106,13 +110,11 @@ class AIAggregateProfile(models.Model):
 		ai_description: str,
 		laptop_friendly: float,
 		study_friendly: float,
-		overall_crowdness: float,
 		noise_level: float,
 	) -> bool:
 		ratings = {
 			"laptop_friendly": laptop_friendly,
 			"study_friendly": study_friendly,
-			"overall_corwdness": overall_crowdness,
 			"noise_level": noise_level,
 		}
 
@@ -124,7 +126,6 @@ class AIAggregateProfile(models.Model):
 		self.AIdescription = ai_description
 		self.laptop_friendly = float(laptop_friendly)
 		self.study_friendly = float(study_friendly)
-		self.overall_corwdness = float(overall_crowdness)
 		self.noise_level = float(noise_level)
 		self.save()
 
@@ -180,5 +181,50 @@ class AIProfileGenerationJob(models.Model):
 			if value:
 				setattr(self, field_name, value)
 		update_fields = ["status", "error", "updated_at", *task_ids.keys()]
+		self.save(update_fields=update_fields)
+		return self
+
+
+class BestTimeCrowdnessJob(models.Model):
+	STATUS_QUEUED = "queued"
+	STATUS_FETCHING = "fetching"
+	STATUS_DONE = "done"
+	STATUS_FAILED = "failed"
+
+	ACTIVE_STATUSES = {
+		STATUS_QUEUED,
+		STATUS_FETCHING,
+	}
+
+	STATUS_CHOICES = [
+		(STATUS_QUEUED, "Queued"),
+		(STATUS_FETCHING, "Fetching BestTime data"),
+		(STATUS_DONE, "Done"),
+		(STATUS_FAILED, "Failed"),
+	]
+
+	location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="besttime_jobs")
+	status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
+	task_id = models.CharField(max_length=255, blank=True)
+	error = models.TextField(blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = "app_besttimecrowdnessjob"
+		indexes = [
+			models.Index(fields=["location", "status"]),
+			models.Index(fields=["updated_at"]),
+		]
+		ordering = ["-updated_at"]
+
+	def mark_status(self, status: str, error: str = "", task_id: str = ""):
+		self.status = status
+		self.error = error
+		if task_id:
+			self.task_id = task_id
+		update_fields = ["status", "error", "updated_at"]
+		if task_id:
+			update_fields.append("task_id")
 		self.save(update_fields=update_fields)
 		return self

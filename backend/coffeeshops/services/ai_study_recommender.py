@@ -108,7 +108,7 @@ def _format_locations_for_prompt(locations_data: list) -> str:
             f"Study Friendly: {prof.get('study_friendly', 'N/A')} | "
             f"Laptop Friendly: {prof.get('laptop_friendly', 'N/A')} | "
             f"Noise: {prof.get('noise_level', 'N/A')} | "
-            f"Crowd: {prof.get('overall_crowdness', 'N/A')} | "
+            f"Live Crowdness: {loc.get('besttime_live_busyness', 'N/A')}% | "
             f"Desc: {prof.get('ai_description', 'No description')}"
         )
     return "\n".join(lines)

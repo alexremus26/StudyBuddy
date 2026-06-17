@@ -48,6 +48,10 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2").strip()
 OLLAMA_RECOMMENDER_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_RECOMMENDER_TIMEOUT_SECONDS", "120"))
 OLLAMA_RECOMMENDER_MAX_LOCATIONS = int(os.environ.get("OLLAMA_RECOMMENDER_MAX_LOCATIONS", "60"))
 
+# BestTime API Configuration
+BESTTIME_API_KEY_PRIVATE = os.environ.get("BESTTIME_API_KEY_PRIVATE", "").strip()
+BESTTIME_API_KEY_PUBLIC = os.environ.get("BESTTIME_API_KEY_PUBLIC", "").strip()
+
 SCHEDULE_LAYOUT_PIPELINE_MODE = os.environ.get("SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled").strip().lower()
 if SCHEDULE_LAYOUT_PIPELINE_MODE not in {"disabled", "shadow", "active"}:
     SCHEDULE_LAYOUT_PIPELINE_MODE = "disabled"
@@ -212,6 +216,7 @@ CELERY_TASK_ROUTES = {
     'coffeeshops.tasks.process_location_profile_task': {'queue': 'coffeeshops'},
     'coffeeshops.tasks.fetch_reviews_task': {'queue': 'apify'},
     'coffeeshops.tasks.score_location_task': {'queue': 'ai'},
+    'coffeeshops.tasks.fetch_besttime_crowdness_task': {'queue': 'besttime'},
 }
 
 SPECTACULAR_SETTINGS = {

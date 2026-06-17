@@ -3,6 +3,39 @@ import { listAssignments, recommendByAssignment, recommendByMood, updateAssignme
 
 const AI_FINDER_SESSION_KEY = 'studybuddy:ai-finder-state';
 
+const MOOD_PRESETS = [
+  {
+    icon: 'volume_off',
+    label: 'Silent Focus',
+    text: 'I need a very quiet place like a library for intense focus and exam preparation. Minimise background noise.',
+    color: 'hover:bg-red-500/10 hover:text-red-700 hover:border-red-500/20 dark:hover:bg-red-500/20 dark:hover:text-red-300'
+  },
+  {
+    icon: 'coffee',
+    label: 'Café Vibe',
+    text: 'Looking for a classic café atmosphere with pleasant ambient noise, good music, and delicious coffee/pastries.',
+    color: 'hover:bg-amber-500/10 hover:text-amber-700 hover:border-amber-500/20 dark:hover:bg-amber-500/20 dark:hover:text-amber-300'
+  },
+  {
+    icon: 'group',
+    label: 'Group Work',
+    text: 'A spacious place with larger tables suitable for meeting up with friends to talk and work on projects together.',
+    color: 'hover:bg-blue-500/10 hover:text-blue-700 hover:border-blue-500/20 dark:hover:bg-blue-500/20 dark:hover:text-blue-300'
+  },
+  {
+    icon: 'power',
+    label: 'Need Outlets',
+    text: 'My laptop battery is low, so I need a spot with plenty of accessible wall power sockets and table space.',
+    color: 'hover:bg-purple-500/10 hover:text-purple-700 hover:border-purple-500/20 dark:hover:bg-purple-500/20 dark:hover:text-purple-300'
+  },
+  {
+    icon: 'forest',
+    label: 'Outdoor Spot',
+    text: 'I want to study in an open space like a garden terrace, patio, or near windows with nice outdoor natural light.',
+    color: 'hover:bg-emerald-500/10 hover:text-emerald-700 hover:border-emerald-500/20 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-300'
+  }
+];
+
 function loadPersistedAIState() {
   try {
     const raw = window.sessionStorage.getItem(AI_FINDER_SESSION_KEY);
@@ -180,35 +213,36 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
         </p>
       </div>
 
-      <div className="flex justify-center gap-4 mb-8">
+      <div className="max-w-[360px] mx-auto bg-muted/60 p-1 rounded-full flex gap-1 mb-8 border backdrop-blur-sm">
         <button
           onClick={() => setActiveSubTab('assignment')}
-          className={`px-6 py-2 rounded-full font-medium transition-all ${
+          className={`flex-1 py-2 text-xs font-bold rounded-full transition-all cursor-pointer ${
             activeSubTab === 'assignment'
-              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+              ? 'bg-background shadow text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           By Assignment
         </button>
         <button
           onClick={() => setActiveSubTab('mood')}
-          className={`px-6 py-2 rounded-full font-medium transition-all ${
+          className={`flex-1 py-2 text-xs font-bold rounded-full transition-all cursor-pointer ${
             activeSubTab === 'mood'
-              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+              ? 'bg-background shadow text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           By Mood
         </button>
       </div>
 
-      <div className="bg-card border rounded-2xl p-6 shadow-sm mb-8 animate-in fade-in slide-in-from-bottom-4">
+      <div className="bg-card border rounded-3xl p-6 md:p-8 shadow-sm mb-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
         {activeSubTab === 'assignment' ? (
           <div className="space-y-4">
-            <label className="block font-medium text-sm text-muted-foreground uppercase tracking-wider">Select an assignment to work on:</label>
+            <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">Select an assignment to work on:</label>
             {assignments.length === 0 ? (
-              <div className="text-center py-8 border border-dashed rounded-xl bg-muted/5">
+              <div className="text-center py-10 border border-dashed rounded-2xl bg-muted/5">
+                <span className="material-symbols-outlined text-[36px] text-muted-foreground/40 mb-2">assignment_late</span>
                 <p className="text-sm text-muted-foreground italic">No uncompleted assignments found. Add some in your Schedule!</p>
               </div>
             ) : (
@@ -228,38 +262,41 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
                     <div
                       key={a.id}
                       onClick={() => setSelectedAssignmentId(a.id.toString())}
-                      className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                      className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 ${
                         isSelected
-                          ? 'border-primary bg-primary/[0.02] shadow-sm ring-1 ring-primary/10'
+                          ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-500/[0.02] shadow-sm ring-1 ring-indigo-500/10'
                           : 'border-border/60 bg-card hover:bg-muted/40 hover:border-border'
                       }`}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className={`font-semibold text-sm truncate ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                          <p className={`font-bold text-sm truncate ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-foreground'}`}>
                             {a.title}
                           </p>
                           {a.category && (
-                            <span className={`px-2 py-0.5 rounded border text-[9px] font-semibold capitalize tracking-wide ${badgeClass}`}>
+                            <span className={`px-2 py-0.5 rounded border text-[9px] font-bold capitalize tracking-wide ${badgeClass}`}>
                               {a.category}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-x-2 text-[11px] text-muted-foreground mt-1">
-                          <span>Due: {a.due_date ? new Date(a.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : 'No date'}</span>
+                        <div className="flex items-center gap-x-2 text-[11px] text-muted-foreground mt-1.5">
+                          <span className="flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[12px]">event</span>
+                            Due: {a.due_date ? new Date(a.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : 'No date'}
+                          </span>
                           {a.estimated_duration_minutes && (
                             <>
                               <span>•</span>
-                              <span>{a.estimated_duration_minutes} mins</span>
+                              <span className="flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[12px]">schedule</span>
+                                {a.estimated_duration_minutes} mins
+                              </span>
                             </>
                           )}
                         </div>
                         {a.study_location_detail && (
-                          <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
+                          <div className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 px-2.5 py-1 rounded-xl self-start w-fit border border-emerald-500/10">
+                            <span className="material-symbols-outlined text-[14px]">pin_drop</span>
                             <span className="truncate">Associated spot: {a.study_location_detail.name}</span>
                           </div>
                         )}
@@ -272,11 +309,9 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
                             e.stopPropagation();
                             onSeeOnMap(a.study_location);
                           }}
-                          className="px-3 py-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/80 dark:text-indigo-400 rounded-lg flex items-center gap-1.5 transition-colors self-start md:self-auto"
+                          className="px-3 py-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/80 dark:text-indigo-400 rounded-xl flex items-center gap-1.5 transition-colors self-start md:self-auto font-bold border border-indigo-200/20 cursor-pointer"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                          </svg>
+                          <span className="material-symbols-outlined text-[14px]">map</span>
                           <span>See on Map</span>
                         </button>
                       )}
@@ -288,48 +323,68 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
             <button
               onClick={handleRecommendByAssignment}
               disabled={loading || !selectedAssignmentId}
-              className="w-full py-3 mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-medium shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 mt-4 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white rounded-2xl font-bold shadow-md shadow-indigo-500/10 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {loading ? "Analyzing locations..." : "Find my spot"}
+              {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />}
+              <span>{loading ? "Analyzing locations..." : "Find my spot"}</span>
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
-            <label className="block font-medium">What are you feeling today?</label>
-            <textarea
-              placeholder="e.g. I need a very quiet place to focus deeply for 3 hours, preferably with good coffee."
-              className="w-full p-3 rounded-xl border bg-background text-foreground focus:ring-2 focus:ring-primary outline-none transition-all resize-none"
-              rows={3}
-              value={moodText}
-              onChange={(e) => setMoodText(e.target.value)}
-            />
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">Select a vibe to pre-fill:</label>
+              <div className="flex flex-wrap gap-2">
+                {MOOD_PRESETS.map(preset => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setMoodText(preset.text)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-bold text-muted-foreground bg-background hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer ${preset.color}`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">{preset.icon}</span>
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">Or describe what you are feeling today:</label>
+              <textarea
+                placeholder="e.g. I need a very quiet place to focus deeply for 3 hours, preferably with good coffee."
+                className="w-full p-4 rounded-2xl border bg-background text-foreground focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/80 outline-none transition-all resize-none shadow-inner placeholder:text-muted-foreground/40 text-sm leading-relaxed"
+                rows={3}
+                value={moodText}
+                onChange={(e) => setMoodText(e.target.value)}
+              />
+            </div>
             <button
               onClick={handleRecommendByMood}
               disabled={loading}
-              className="w-full py-3 mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-medium shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 mt-4 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-700 hover:to-violet-800 text-white rounded-2xl font-bold shadow-md shadow-indigo-500/10 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {loading ? "Analyzing locations..." : "Find my spot"}
+              {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />}
+              <span>{loading ? "Analyzing locations..." : "Find my spot"}</span>
             </button>
           </div>
         )}
       </div>
 
       {error && (
-        <div className="bg-destructive/10 border border-destructive/30 text-destructive p-4 rounded-xl mb-8 animate-in fade-in">
-          {error}
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive p-4 rounded-2xl mb-8 animate-in fade-in flex items-center gap-2 text-sm font-semibold">
+          <span className="material-symbols-outlined">error</span>
+          <span>{error}</span>
         </div>
       )}
 
       {recommendation && (
-        <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-6 shadow-lg animate-in zoom-in-95 duration-300">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-foreground">
-            <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.813 15.904L9 21l-1.813-5.096L2.091 14 7.187 12.187 9 7l1.813 5.187L15.909 14l-5.096 1.904zM19.006 5.005L18.5 7l-.506-1.995L16 4.5l1.994-.506L18.5 2l.506 1.994L21 4.5l-1.994.505z" />
-            </svg>
-            <span>AI Recommendation</span>
+        <div className="bg-gradient-to-br from-indigo-50/60 to-blue-50/60 dark:from-indigo-950/20 dark:to-blue-950/20 border border-indigo-100/50 dark:border-indigo-900/40 rounded-3xl p-6 md:p-8 shadow-lg animate-in zoom-in-95 duration-300">
+          <h3 className="text-lg font-extrabold mb-5 flex items-center gap-2 text-foreground">
+            <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400">auto_awesome</span>
+            <span>AI Recommendation Shortlist</span>
           </h3>
           {recommendationItems.length === 0 ? (
-            <p className="mb-4 text-sm text-muted-foreground">
+            <p className="mb-4 text-sm text-muted-foreground italic">
               The AI did not return usable places, so no shortlist can be shown.
             </p>
           ) : null}
@@ -340,9 +395,14 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
               const locationId = item.location_id;
 
               const badges = [
-                'bg-amber-500/15 text-amber-700 border-amber-500/20 dark:text-amber-400 dark:bg-amber-500/20',
-                'bg-indigo-500/15 text-indigo-700 border-indigo-500/20 dark:text-indigo-400 dark:bg-indigo-500/20',
-                'bg-blue-500/15 text-blue-700 border-blue-500/20 dark:text-blue-400 dark:bg-blue-500/20'
+                'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400 dark:bg-amber-500/20',
+                'bg-indigo-500/10 text-indigo-700 border-indigo-500/20 dark:text-indigo-400 dark:bg-indigo-500/20',
+                'bg-blue-500/10 text-blue-700 border-blue-500/20 dark:text-blue-400 dark:bg-blue-500/20'
+              ];
+              const borderStyles = [
+                'border-l-4 border-l-amber-500',
+                'border-l-4 border-l-indigo-500',
+                'border-l-4 border-l-blue-500'
               ];
               const badgeNames = ['Top Pick', 'Highly Recommended', 'Good Match'];
 
@@ -352,52 +412,46 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
               return (
                 <div
                   key={`${locationId ?? index}-${index}`}
-                  className="rounded-2xl border bg-background p-5 shadow-sm hover:scale-[1.01] hover:shadow-md transition-all duration-200"
+                  className={`rounded-2xl border bg-background p-5 md:p-6 shadow-sm hover:scale-[1.01] hover:shadow-md transition-all duration-300 flex flex-col ${borderStyles[index] || ''}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-base font-bold text-foreground truncate">{label}</p>
-                        <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold tracking-wide uppercase shrink-0 ${badges[index] || 'bg-muted text-muted-foreground'}`}>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <p className="text-base font-extrabold text-foreground truncate">{label}</p>
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[9px] font-extrabold tracking-wider uppercase shrink-0 ${badges[index] || 'bg-muted text-muted-foreground'}`}>
                           {badgeNames[index] || `Match #${index + 1}`}
                         </span>
                       </div>
-                      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{reason}</p>
+                      <p className="mt-2.5 text-xs md:text-sm text-muted-foreground leading-relaxed font-medium">{reason}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                    <span className="shrink-0 flex items-center justify-center h-8 w-8 rounded-xl bg-muted/60 text-foreground font-black text-sm">
                       #{index + 1}
                     </span>
                   </div>
 
-                  <div className="mt-5 flex flex-wrap gap-3 border-t pt-4">
+                  <div className="mt-5 flex flex-wrap gap-3 border-t border-muted/50 pt-4">
                     <button
                       onClick={() => onSeeOnMap(locationId)}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:opacity-90 font-medium transition-all shadow-sm flex items-center gap-1.5 text-xs"
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:opacity-95 font-bold transition-all shadow-sm flex items-center gap-1.5 text-xs cursor-pointer"
                       disabled={locationId == null}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                      </svg>
+                      <span className="material-symbols-outlined text-[14px]">map</span>
                       <span>See on Map</span>
                     </button>
                     {selectionMode && (
                       <button
                         onClick={() => onSelectLocation({ id: locationId, name: label })}
-                        className="px-4 py-2 border border-input rounded-xl hover:bg-secondary transition-colors font-medium flex items-center gap-1.5 text-xs"
+                        className="px-4 py-2 border border-input rounded-xl hover:bg-secondary transition-colors font-bold flex items-center gap-1.5 text-xs cursor-pointer"
                         disabled={locationId == null}
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
+                        <span className="material-symbols-outlined text-[14px]">check</span>
                         <span>Select this place</span>
                       </button>
                     )}
                     {!selectionMode && selectedAssignmentId && (
                       isAlreadyAssociated ? (
-                        <span className="px-4 py-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 rounded-xl font-medium flex items-center gap-1.5 text-xs">
-                          <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                          </svg>
+                        <span className="px-4 py-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 rounded-xl font-bold flex items-center gap-1.5 text-xs select-none">
+                          <span className="material-symbols-outlined text-[14px] text-emerald-500">task_alt</span>
                           <span>Assigned spot</span>
                         </span>
                       ) : (
@@ -411,12 +465,10 @@ export function AIStudyFinder({ onSeeOnMap, selectionMode = false, onSelectLocat
                               console.error("Failed to associate location with assignment", err);
                             }
                           }}
-                          className="px-4 py-2 border border-indigo-200 hover:border-indigo-400 text-indigo-600 dark:border-indigo-900 dark:hover:border-indigo-700 dark:text-indigo-400 rounded-xl transition-all font-medium flex items-center gap-1.5 text-xs"
+                          className="px-4 py-2 border border-indigo-200 hover:border-indigo-400 text-indigo-600 dark:border-indigo-900 dark:hover:border-indigo-700 dark:text-indigo-400 rounded-xl transition-all font-bold flex items-center gap-1.5 text-xs cursor-pointer"
                           disabled={locationId == null}
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          <span className="material-symbols-outlined text-[14px]">add_circle</span>
                           <span>Choose for assignment</span>
                         </button>
                       )

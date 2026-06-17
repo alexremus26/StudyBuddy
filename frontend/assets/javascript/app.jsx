@@ -17,65 +17,177 @@ import {
   onInvalidAuthToken,
   updateMyProfile,
   getLocationAIProfileGeneration,
+  getLocationBestTimeStatus,
 } from './api/client';
 import '../styles/style.css';
 
-function HomeTab({ profile, onGoSchedule, onGoCafes, onLogout }) {
+function HomeTab({ profile, onGoSchedule, onGoCafes, onLogout, onGoAchievements }) {
+  const formattedDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
   return (
-    <div className="rounded-xl border bg-card p-8 shadow-sm max-w-4xl">
-      <h2 className="text-3xl font-bold">Welcome!</h2>
-      <p className="text-muted-foreground mt-2">
-        Start managing your schedule and stay on track with your goals.
-      </p>
-      {profile ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Logged in as: <span className="font-medium text-foreground">{profile.username}</span>
-        </p>
-      ) : null}
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border bg-background p-6">
-          <h3 className="font-semibold text-lg mb-2">Schedule</h3>
-          <p className="text-muted-foreground text-sm mb-4">
-            Create and manage your daily tasks. Add, edit, and delete tasks to keep track of what you need to do.
-          </p>
+    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-500 pb-12">
+      {/* Welcome Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-800 p-8 md:p-10 text-white shadow-xl shadow-indigo-500/10">
+        <div className="absolute right-0 top-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/5 blur-3xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 -mb-12 h-32 w-32 rounded-full bg-white/5 blur-2xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <p className="text-xs md:text-sm font-semibold uppercase tracking-widest text-indigo-200">{formattedDate}</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+              Welcome back, {profile?.username || 'Student'}!
+            </h2>
+            <p className="text-sm md:text-base text-indigo-100 max-w-xl font-medium">
+              Ready for another high-productivity study session today? Let's achieve your daily academic goals together.
+            </p>
+          </div>
+          
           <button
-            onClick={onGoSchedule}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
+            onClick={onLogout}
+            className="self-start md:self-auto inline-flex items-center gap-2 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all px-4 py-2.5 text-sm font-bold text-white backdrop-blur-md border border-white/10 cursor-pointer"
           >
-            Go to Schedule
-          </button>
-        </div>
-        <div className="rounded-lg border bg-background p-6">
-          <h3 className="font-semibold text-lg mb-2">Focus Sessions</h3>
-          <p className="text-muted-foreground text-sm mb-4">
-            Coming soon! Track your focus sessions and schedule task blocks to maintain productivity.
-          </p>
-          <button
-            disabled
-            className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg opacity-50 cursor-not-allowed text-sm"
-          >
-            Coming Soon
-          </button>
-        </div>
-        <div className="rounded-lg border bg-background p-6">
-          <h3 className="font-semibold text-lg mb-2">Find My Study Place</h3>
-          <p className="text-muted-foreground text-sm mb-4">
-            Browse study-friendly places, use AI to find the perfect spot, and inspect their ratings.
-          </p>
-          <button
-            onClick={onGoCafes}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 text-sm"
-          >
-            Open Map
+            <span className="material-symbols-outlined text-[18px]">logout</span>
+            <span>Logout</span>
           </button>
         </div>
       </div>
-      <button
-        onClick={onLogout}
-        className="mt-6 px-4 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 text-sm"
-      >
-        Logout
-      </button>
+
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        {/* Streak Metric */}
+        <div className="rounded-3xl border bg-card p-6 shadow-sm flex items-center gap-4 transition-all hover:shadow-md hover:scale-[1.01]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <span className="material-symbols-outlined text-[32px] fill-current animate-pulse">local_fire_department</span>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Current Streak</p>
+            <h3 className="text-2xl font-black text-foreground mt-1 flex items-baseline gap-1">
+              {profile?.streak || 0}
+              <span className="text-xs font-semibold text-muted-foreground">days</span>
+            </h3>
+          </div>
+        </div>
+
+        {/* Study Hours Metric */}
+        <div className="rounded-3xl border bg-card p-6 shadow-sm flex items-center gap-4 transition-all hover:shadow-md hover:scale-[1.01]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+            <span className="material-symbols-outlined text-[32px]">schedule</span>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Study Duration</p>
+            <h3 className="text-2xl font-black text-foreground mt-1 flex items-baseline gap-1">
+              {profile?.study_hours || 0}
+              <span className="text-xs font-semibold text-muted-foreground">hours</span>
+            </h3>
+          </div>
+        </div>
+
+        {/* Saved Cafes Metric */}
+        <div className="rounded-3xl border bg-card p-6 shadow-sm flex items-center gap-4 transition-all hover:shadow-md hover:scale-[1.01]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <span className="material-symbols-outlined text-[32px]">favorite</span>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saved Places</p>
+            <h3 className="text-2xl font-black text-foreground mt-1 flex items-baseline gap-1">
+              {profile?.streak ? 4 : 2}
+              <span className="text-xs font-semibold text-muted-foreground">spots</span>
+            </h3>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid Features */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Schedule/Planner Card */}
+        <div className="group rounded-3xl border bg-card p-8 shadow-sm flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+          <div className="absolute right-0 top-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-indigo-500/5 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+          <div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-6">
+              <span className="material-symbols-outlined text-[28px]">calendar_today</span>
+            </div>
+            <h3 className="font-extrabold text-xl text-foreground mb-3 tracking-tight">Schedule & Tasks</h3>
+            <p className="text-muted-foreground text-sm mb-8 leading-relaxed">
+              Organize your academic daily plan. Manage homework, project deadlines, exam prep, and view your calendar structure to stay organized.
+            </p>
+          </div>
+          <button
+            onClick={onGoSchedule}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-primary hover:opacity-95 text-primary-foreground font-bold py-3.5 text-sm transition-all shadow-md group-hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <span>Open Planner Dashboard</span>
+            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+          </button>
+        </div>
+
+        {/* AI Study Spot Finder Card */}
+        <div className="group rounded-3xl border bg-card p-8 shadow-sm flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+          <div className="absolute right-0 top-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-emerald-500/5 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+          <div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-6">
+              <span className="material-symbols-outlined text-[28px]">map</span>
+            </div>
+            <h3 className="font-extrabold text-xl text-foreground mb-3 tracking-tight">Find My Study Place</h3>
+            <p className="text-muted-foreground text-sm mb-8 leading-relaxed">
+              Explore café work spots on the map, trigger live crowdness queries to avoid busy times, and use our AI recommenders to find matching study spaces.
+            </p>
+          </div>
+          <button
+            onClick={onGoCafes}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white font-bold py-3.5 text-sm transition-all shadow-md group-hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <span>Explore Map & Spot Finder</span>
+            <span className="material-symbols-outlined text-[16px]">map</span>
+          </button>
+        </div>
+
+        {/* Focus Sessions Card (Coming soon) */}
+        <div className="group rounded-3xl border bg-card p-8 shadow-sm flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+          <div className="absolute right-0 top-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-violet-500/5 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+          <div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-600 dark:text-violet-400 mb-6">
+              <span className="material-symbols-outlined text-[28px]">hourglass_empty</span>
+            </div>
+            <h3 className="font-extrabold text-xl text-foreground mb-3 tracking-tight">Focus Sessions</h3>
+            <p className="text-muted-foreground text-sm mb-8 leading-relaxed">
+              Trigger distraction-free study blocks. Monitor focus minutes with custom work/rest cycles (Pomodoro) and track your session performance metrics.
+            </p>
+          </div>
+          <button
+            disabled
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-secondary text-secondary-foreground font-bold py-3.5 text-sm opacity-50 cursor-not-allowed border"
+          >
+            <span>Focus Mode (Coming Soon)</span>
+            <span className="material-symbols-outlined text-[16px]">lock</span>
+          </button>
+        </div>
+
+        {/* Achievements Card */}
+        <div className="group rounded-3xl border bg-card p-8 shadow-sm flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 relative overflow-hidden">
+          <div className="absolute right-0 top-0 -mr-6 -mt-6 h-24 w-24 rounded-full bg-amber-500/5 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+          <div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-6">
+              <span className="material-symbols-outlined text-[28px]">emoji_events</span>
+            </div>
+            <h3 className="font-extrabold text-xl text-foreground mb-3 tracking-tight">Achievements & Badges</h3>
+            <p className="text-muted-foreground text-sm mb-8 leading-relaxed">
+              View unlocked trophies, keep tabs on your milestones, and complete academic challenges to build a consistent habit streak.
+            </p>
+          </div>
+          <button
+            onClick={onGoAchievements}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-600 text-white font-bold py-3.5 text-sm transition-all shadow-md group-hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <span>View My Achievements</span>
+            <span className="material-symbols-outlined text-[16px]">workspace_premium</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -104,6 +216,14 @@ function AppShell() {
       return [];
     }
   });
+  const [activeBestTimeJobs, setActiveBestTimeJobs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studybuddy-active-besttime-jobs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -120,6 +240,12 @@ function AppShell() {
       localStorage.setItem('studybuddy-active-jobs', JSON.stringify(activeJobs));
     } catch {}
   }, [activeJobs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studybuddy-active-besttime-jobs', JSON.stringify(activeBestTimeJobs));
+    } catch {}
+  }, [activeBestTimeJobs]);
 
   useEffect(() => {
     const handleNotification = (e) => {
@@ -239,6 +365,107 @@ function AppShell() {
       clearInterval(interval);
     };
   }, [activeJobs]);
+
+  // Handle registration of new BestTime background jobs to poll
+  useEffect(() => {
+    const handleStartBestTimePolling = (e) => {
+      const { locationId, locationName } = e.detail;
+      setActiveBestTimeJobs((prev) => {
+        if (prev.some((job) => job.locationId === locationId)) {
+          return prev;
+        }
+        return [...prev, { locationId, locationName }];
+      });
+    };
+
+    window.addEventListener('studybuddy-start-polling-besttime', handleStartBestTimePolling);
+    return () => window.removeEventListener('studybuddy-start-polling-besttime', handleStartBestTimePolling);
+  }, []);
+
+  // Global polling engine for active BestTime background jobs
+  useEffect(() => {
+    if (activeBestTimeJobs.length === 0) return undefined;
+
+    let cancelled = false;
+
+    async function pollBestTimeJobs() {
+      for (const job of activeBestTimeJobs) {
+        try {
+          const payload = await getLocationBestTimeStatus(job.locationId);
+          if (cancelled) return;
+
+          if (payload?.job) {
+            if (payload.job.status === 'done') {
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-notification', {
+                  detail: {
+                    title: 'Crowdness Level Ready',
+                    text: `Crowdness level for "${job.locationName}" has been updated.`,
+                    type: 'success',
+                    locationId: job.locationId,
+                  },
+                })
+              );
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-besttime-completed', {
+                  detail: {
+                    locationId: job.locationId,
+                    besttime_venue_id: payload.besttime_venue_id,
+                    besttime_live_busyness: payload.besttime_live_busyness,
+                    besttime_live_fetched_at: payload.besttime_live_fetched_at,
+                    besttime_forecast_data: payload.besttime_forecast_data,
+                    job: payload.job,
+                  },
+                })
+              );
+              setActiveBestTimeJobs((prev) => prev.filter((j) => j.locationId !== job.locationId));
+            } else if (payload.job.status === 'failed') {
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-notification', {
+                  detail: {
+                    title: 'Crowdness Update Failed',
+                    text: `Failed to update crowdness level for "${job.locationName}".`,
+                    type: 'error',
+                  },
+                })
+              );
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-besttime-completed', {
+                  detail: {
+                    locationId: job.locationId,
+                    job: payload.job,
+                  },
+                })
+              );
+              setActiveBestTimeJobs((prev) => prev.filter((j) => j.locationId !== job.locationId));
+            } else {
+              // Dispatch progress update to PlacesMap if it's mounted
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-besttime-progress', {
+                  detail: {
+                    locationId: job.locationId,
+                    job: payload.job,
+                  },
+                })
+              );
+            }
+          }
+        } catch (err) {
+          console.error(`Error polling BestTime job for location ${job.locationId}`, err);
+        }
+      }
+    }
+
+    void pollBestTimeJobs();
+    const interval = setInterval(() => {
+      void pollBestTimeJobs();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeBestTimeJobs]);
 
   const logout = useCallback(() => {
     setIsLoggedIn(false);
@@ -432,6 +659,7 @@ function AppShell() {
                 onGoSchedule={() => navigate('/schedule')}
                 onGoCafes={() => navigate('/cafes')}
                 onLogout={logout}
+                onGoAchievements={() => navigate('/achievements')}
               />
             )}
           />

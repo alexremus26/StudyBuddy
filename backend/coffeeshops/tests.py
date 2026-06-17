@@ -5,9 +5,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.conf import settings
 
-from coffeeshops.models import AIAggregateProfile, Location
+from coffeeshops.models import AIAggregateProfile, Location, BestTimeCrowdnessJob
 from coffeeshops.services.ai_profile_service import build_ai_profile_from_reviews
-from coffeeshops.tasks import process_location_profile_task, fetch_reviews_task, score_location_task
+from coffeeshops.tasks import process_location_profile_task, fetch_reviews_task, score_location_task, fetch_besttime_crowdness_task
 
 
 class AIProfileServiceTests(TestCase):
@@ -79,7 +79,6 @@ class ProcessLocationProfileTaskTests(TestCase):
 				"AIdescription": "Mock profile",
 				"laptop_friendly": 4.0,
 				"study_friendly": 4.5,
-				"overall_corwdness": 2.0,
 				"noise_level": 2.5,
 				"generation_source": f"ollama-{settings.OLLAMA_MODEL}",
 			}
@@ -103,9 +102,8 @@ class ProcessLocationProfileTaskTests(TestCase):
 		self.assertEqual(profile.AIdescription, "Mock profile")
 		self.assertEqual(profile.laptop_friendly, 4.0)
 		self.assertEqual(profile.study_friendly, 4.5)
-		self.assertEqual(profile.overall_corwdness, 2.0)
 		self.assertEqual(profile.noise_level, 2.5)
-		self.assertEqual(profile.overall_rating, 3.6)
+		self.assertEqual(profile.overall_rating, 3.7)
 
 	def test_fetch_reviews_task_fails_with_no_reviews(self):
 		"""fetch_reviews_task should raise RuntimeError when no reviews are collected."""
@@ -118,3 +116,84 @@ class ProcessLocationProfileTaskTests(TestCase):
 
 		self.assertIn("No reviews available", str(ctx.exception))
 		self.assertFalse(AIAggregateProfile.objects.filter(location=self.location).exists())
+
+
+class BestTimeCrowdnessTaskTests(TestCase):
+	def setUp(self):
+		self.location = Location.objects.create(
+			google_place_id="place-789",
+			name="Mocky Cafe",
+			address="78 mock road",
+		)
+
+	@override_settings(BESTTIME_API_KEY_PRIVATE="")
+	def test_fetch_besttime_crowdness_mock_fallback(self):
+		job = BestTimeCrowdnessJob.objects.create(
+			location=self.location,
+			status=BestTimeCrowdnessJob.STATUS_QUEUED,
+		)
+		
+		result = fetch_besttime_crowdness_task.run(self.location.id, job.id)
+		
+		self.assertEqual(result["status"], "done")
+		self.assertTrue(result["mocked"])
+		
+		# Refresh from db
+		self.location.refresh_from_db()
+		self.assertIsNotNone(self.location.besttime_venue_id)
+		self.assertIsNotNone(self.location.besttime_live_busyness)
+		self.assertIsNotNone(self.location.besttime_forecast_data)
+		
+		job.refresh_from_db()
+		self.assertEqual(job.status, BestTimeCrowdnessJob.STATUS_DONE)
+
+	@override_settings(BESTTIME_API_KEY_PRIVATE="valid_api_key")
+	@patch("requests.post")
+	def test_fetch_besttime_crowdness_real_api(self, mock_post):
+		job = BestTimeCrowdnessJob.objects.create(
+			location=self.location,
+			status=BestTimeCrowdnessJob.STATUS_QUEUED,
+		)
+		
+		# Setup mock responses for both POST /forecasts and POST /forecasts/live
+		mock_response_forecast = SimpleNamespace(
+			status_code=200,
+			json=lambda: {
+				"status": "OK",
+				"venue_info": {
+					"venue_id": "ven_test_123",
+					"venue_name": "Mocky Cafe",
+					"venue_address": "78 mock road"
+				},
+				"analysis": [{"day_info": "Monday", "day_raw": [10]*24}]
+			},
+			raise_for_status=lambda: None
+		)
+		
+		mock_response_live = SimpleNamespace(
+			status_code=200,
+			json=lambda: {
+				"status": "OK",
+				"analysis": {
+					"venue_live_could_connect": True,
+					"venue_live_busyness": 45
+				}
+			},
+			raise_for_status=lambda: None
+		)
+		
+		mock_post.side_effect = [mock_response_forecast, mock_response_live]
+		
+		result = fetch_besttime_crowdness_task.run(self.location.id, job.id)
+		
+		self.assertEqual(result["status"], "done")
+		self.assertFalse(result["mocked"])
+		self.assertEqual(result["live_busyness"], 45)
+		
+		# Refresh from db
+		self.location.refresh_from_db()
+		self.assertEqual(self.location.besttime_venue_id, "ven_test_123")
+		self.assertEqual(self.location.besttime_live_busyness, 45)
+		
+		job.refresh_from_db()
+		self.assertEqual(job.status, BestTimeCrowdnessJob.STATUS_DONE)

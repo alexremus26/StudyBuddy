@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from app.models import Assignment, SchoolClass, TaskBlock
+from coffeeshops.serializers import LocationSummarySerializer
 
 MAX_DURATION_MINUTES : int = 24 * 60
 MAX_BULK_TASKS : int = 100
@@ -103,6 +104,8 @@ def _validate_due_date(due_date):
 
 
 class AssignmentSerializer(serializers.ModelSerializer):
+    study_location_detail = LocationSummarySerializer(source='study_location', read_only=True)
+
     class Meta:
         model = Assignment
         fields = [
@@ -115,8 +118,10 @@ class AssignmentSerializer(serializers.ModelSerializer):
             "category",
             "priority",
             "created_at",
+            "study_location",
+            "study_location_detail",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "study_location_detail"]
 
 
 class AssignmentCreateSerializer(serializers.ModelSerializer):
@@ -129,6 +134,7 @@ class AssignmentCreateSerializer(serializers.ModelSerializer):
             "due_date",
             "category",
             "priority",
+            "study_location",
         ]
 
     def validate_due_date(self, value):
@@ -147,6 +153,7 @@ class AssignmentEditSerializer(serializers.ModelSerializer):
             "due_date",
             "category",
             "priority",
+            "study_location",
         ]
 
     def validate_due_date(self, value):

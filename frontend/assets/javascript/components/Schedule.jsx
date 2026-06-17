@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   listAssignments,
   createAssignment,
@@ -574,6 +575,7 @@ function getParserBadge(source) {
 }
 
 export function Schedule({ onProfileUpdate = () => {} }) {
+  const navigate = useNavigate();
   const [assignments, setAssignments] = useState([]);
   const [schoolClasses, setSchoolClasses] = useState([]);
   const [taskBlocks, setTaskBlocks] = useState([]);
@@ -848,7 +850,14 @@ export function Schedule({ onProfileUpdate = () => {} }) {
     try {
       setError(null);
       await updateTaskBlock(taskBlockId, { completed: !currentStatus });
-      fetchScheduleData();
+      
+      // Sync associated assignment completion status
+      const block = taskBlocks.find((tb) => tb.id === taskBlockId);
+      if (block?.assignment) {
+        await updateAssignment(block.assignment.id, { is_completed: !currentStatus });
+      }
+      
+      await fetchScheduleData();
       onProfileUpdate();
     } catch (err) {
       setError(err.message || 'Failed to update study session');
@@ -859,7 +868,16 @@ export function Schedule({ onProfileUpdate = () => {} }) {
     try {
       setError(null);
       await updateAssignment(assignmentId, { is_completed: !currentStatus });
-      fetchScheduleData();
+      
+      // Sync all associated task blocks
+      const blocksToUpdate = taskBlocks.filter((tb) => tb.assignment?.id === assignmentId);
+      for (const tb of blocksToUpdate) {
+        if (Boolean(tb.completed) !== !currentStatus) {
+          await updateTaskBlock(tb.id, { completed: !currentStatus });
+        }
+      }
+      
+      await fetchScheduleData();
       onProfileUpdate();
     } catch (err) {
       setError(err.message || 'Failed to update assignment');
@@ -1199,22 +1217,48 @@ export function Schedule({ onProfileUpdate = () => {} }) {
                 </form>
               )}
 
-              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                 {schoolClasses.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-4 italic">No classes yet.</p>
+                  <div className="text-center py-8 border border-dashed rounded-xl bg-muted/5">
+                    <p className="text-xs text-muted-foreground italic">No classes scheduled yet.</p>
+                  </div>
                 ) : (
                   schoolClasses.map((sc) => (
-                    <div key={sc.id} className="group relative rounded border border-border/30 bg-background/30 px-2 py-1.5 hover:bg-muted/30 transition-all" title={`${sc.location ? `Location: ${sc.location}` : ''}${sc.lecturer_name ? `\nLecturer: ${sc.lecturer_name}` : ''}`.trim() || 'No additional details'}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex flex-col overflow-hidden">
-                          <span className="text-xs font-bold truncate">{sc.name}</span>
-                          <span className="text-[10px] text-muted-foreground truncate">
-                            {DAYS[sc.day_of_week]?.label.slice(0, 3)} • {sc.start_time.slice(0, 5)}-{sc.end_time.slice(0, 5)} • {sc.class_type}
-                          </span>
+                    <div
+                      key={sc.id}
+                      className="group relative rounded-xl border border-border/40 bg-card/30 p-3 hover:bg-card/70 hover:border-indigo-500/30 hover:shadow-sm hover:scale-[1.01] transition-all duration-200"
+                      title={(`${sc.location ? `Location: ${sc.location}` : ''}${sc.lecturer_name ? `\nLecturer: ${sc.lecturer_name}` : ''}`).trim() || 'No additional details'}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-xs font-bold text-foreground truncate">{sc.name}</span>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-muted-foreground">
+                            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                              {DAYS[sc.day_of_week]?.label.slice(0, 3)}
+                            </span>
+                            <span>•</span>
+                            <span>{sc.start_time.slice(0, 5)} - {sc.end_time.slice(0, 5)}</span>
+                            <span>•</span>
+                            <span className="capitalize">{sc.class_type}</span>
+                          </div>
+                          {sc.location && (
+                            <div className="mt-1.5 flex items-center gap-1 text-[9px] text-muted-foreground">
+                              <svg className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                              </svg>
+                              <span className="truncate">{sc.location}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button onClick={() => handleDeleteSchoolClass(sc.id)} className="text-muted-foreground hover:text-destructive">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            onClick={() => handleDeleteSchoolClass(sc.id)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            title="Delete class"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                           </button>
                         </div>
                       </div>
@@ -1247,40 +1291,112 @@ export function Schedule({ onProfileUpdate = () => {} }) {
                 </div>
               </div>
 
-              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                 {assignments.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-4 italic">No assignments yet.</p>
+                  <div className="text-center py-8 border border-dashed rounded-xl bg-muted/5">
+                    <p className="text-xs text-muted-foreground italic">No assignments scheduled yet.</p>
+                  </div>
                 ) : (
-                  assignments.map((a) => (
-                    <div key={a.id} className={`group relative rounded border px-2 py-1.5 transition-all ${a.is_completed ? 'bg-green-500/5 border-green-500/20 opacity-70' : 'border-border/30 bg-background/30 hover:bg-muted/30'}`} title={a.description || 'No description provided'}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 overflow-hidden flex-1">
-                          <input
-                            type="checkbox"
-                            checked={a.is_completed}
-                            onChange={() => handleToggleAssignmentCompletion(a.id, a.is_completed)}
-                            className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 shrink-0"
-                          />
-                          <div className="flex flex-col overflow-hidden">
-                            <p className={`text-xs truncate ${a.is_completed ? 'line-through text-muted-foreground' : 'font-bold'}`}>
-                              {a.title}
-                            </p>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              Due: {a.due_date ? new Date(a.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : 'No date'}
-                            </span>
+                  assignments.map((a) => {
+                    const categoryColors = {
+                      homework: 'bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30',
+                      project: 'bg-purple-500/10 text-purple-700 border-purple-500/20 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30',
+                      exam: 'bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30',
+                      reading: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
+                      other: 'bg-gray-500/10 text-gray-700 border-gray-500/20 dark:bg-gray-500/20 dark:text-gray-300 dark:border-gray-500/30',
+                    };
+                    const badgeClass = categoryColors[a.category?.toLowerCase()] || categoryColors.other;
+
+                    return (
+                      <div
+                        key={a.id}
+                        className={`group relative rounded-xl border p-3 hover:shadow-sm hover:scale-[1.01] transition-all duration-200 ${
+                          a.is_completed
+                            ? 'bg-green-500/5 border-green-500/20 opacity-70'
+                            : 'border-border/40 bg-card/30 hover:bg-card/70'
+                        }`}
+                        title={a.description || 'No description provided'}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-start gap-3 overflow-hidden flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={a.is_completed}
+                              onChange={() => handleToggleAssignmentCompletion(a.id, a.is_completed)}
+                              className="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 shrink-0 cursor-pointer"
+                            />
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <p className={`text-xs truncate ${a.is_completed ? 'line-through text-muted-foreground' : 'font-bold text-foreground'}`}>
+                                {a.title}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-muted-foreground">
+                                <span>Due: {a.due_date ? new Date(a.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : 'No date'}</span>
+                                {a.estimated_duration_minutes && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{a.estimated_duration_minutes}m</span>
+                                  </>
+                                )}
+                                {a.category && (
+                                  <>
+                                    <span>•</span>
+                                    <span className={`px-1.5 py-0.2 rounded border text-[9px] capitalize ${badgeClass}`}>
+                                      {a.category}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              {a.study_location_detail && (
+                                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                  <span className="truncate">Scheduled at {a.study_location_detail.name}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-1 items-center shrink-0">
+                            {a.study_location && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/cafes?location=${a.study_location}`);
+                                }}
+                                className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-950 hover:scale-105 transition-all mr-1 shrink-0 flex items-center justify-center"
+                                title={`See ${a.study_location_detail?.name || 'location'} on map`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                                </svg>
+                              </button>
+                            )}
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                              <button
+                                onClick={() => handleOpenForm(a)}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-indigo-600 hover:bg-indigo-500/10 transition-colors"
+                                title="Edit assignment"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTask(a.id)}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                title="Delete assignment"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button onClick={() => handleOpenForm(a)} className="text-muted-foreground hover:text-indigo-600">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                          </button>
-                          <button onClick={() => handleDeleteTask(a.id)} className="text-muted-foreground hover:text-destructive">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                          </button>
-                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

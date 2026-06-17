@@ -45,6 +45,8 @@ APIFY_MAX_REVIEWS_PER_PLACE = int(os.environ.get("APIFY_MAX_REVIEWS_PER_PLACE", 
 # Ollama Configuration — local LLM for AI profile scoring
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").strip()
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2").strip()
+OLLAMA_RECOMMENDER_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_RECOMMENDER_TIMEOUT_SECONDS", "120"))
+OLLAMA_RECOMMENDER_MAX_LOCATIONS = int(os.environ.get("OLLAMA_RECOMMENDER_MAX_LOCATIONS", "60"))
 
 SCHEDULE_LAYOUT_PIPELINE_MODE = os.environ.get("SCHEDULE_LAYOUT_PIPELINE_MODE", "disabled").strip().lower()
 if SCHEDULE_LAYOUT_PIPELINE_MODE not in {"disabled", "shadow", "active"}:

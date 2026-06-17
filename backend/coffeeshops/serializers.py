@@ -14,6 +14,22 @@ class AIAggregateProfileSummarySerializer(serializers.Serializer):
     created_at = serializers.DateTimeField(read_only=True)
 
 
+class LocationSummarySerializer(serializers.ModelSerializer):
+    coordinates = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Location
+        fields = ["id", "name", "address", "coordinates"]
+
+    def get_coordinates(self, obj):
+        if obj.coordinates is None:
+            return None
+        return {
+            "latitude": obj.coordinates.y,
+            "longitude": obj.coordinates.x,
+        }
+
+
 class LocationMapSerializer(serializers.ModelSerializer):
     coordinates = serializers.SerializerMethodField()
     aggregate_profile = serializers.SerializerMethodField()

@@ -40,12 +40,14 @@ def fetch_apify_reviews(google_place_id: str, limit: int | None = None) -> dict:
     actor_id = getattr(settings, "APIFY_REVIEWS_ACTOR_ID", "compass/crawler-google-places").strip()
 
     if not api_token:
-        logger.error("APIFY_API_TOKEN is not configured — cannot fetch reviews")
-        return _error_response(google_place_id, "APIFY_API_TOKEN is not set")
+        error_message = "APIFY_API_TOKEN is not configured — cannot fetch reviews"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
 
     if ApifyClient is None:
-        logger.error("apify-client package is not installed")
-        return _error_response(google_place_id, "apify-client is not installed")
+        error_message = "apify-client package is not installed"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
 
     client = ApifyClient(api_token)
 
@@ -77,7 +79,7 @@ def fetch_apify_reviews(google_place_id: str, limit: int | None = None) -> dict:
             "Apify actor run failed for place_id=%s: %s: %s",
             google_place_id, type(exc).__name__, exc,
         )
-        return _error_response(google_place_id, str(exc))
+        raise
 
     reviews_raw = []
     for item in dataset_items:

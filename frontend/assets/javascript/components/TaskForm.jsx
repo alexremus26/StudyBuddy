@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { runDocumentOcr, terminateOcrWorker } from '../utils/ocrService';
-import { createAssignment } from '../api/client';
+import { createAssignment, listFavoriteLocations } from '../api/client';
+import { StudyPlaceFinder } from './StudyPlaceFinder';
 
 const OCR_STATUS = {
   IDLE: 'idle',
@@ -37,6 +38,8 @@ export function TaskForm({ task, onSubmit, onClose }) {
     estimated_duration_minutes: '',
     due_date: '',
     is_completed: false,
+    study_location: null,
+    study_location_detail: null,
   });
 
   const [errors, setErrors] = useState({});
@@ -53,6 +56,11 @@ export function TaskForm({ task, onSubmit, onClose }) {
     message: '',
   });
   const [isAddingToSchedule, setIsAddingToSchedule] = useState(false);
+  
+  const [isSelectingFromMap, setIsSelectingFromMap] = useState(false);
+  const [isSelectingFavorites, setIsSelectingFavorites] = useState(false);
+  const [favoriteLocations, setFavoriteLocations] = useState([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
 
   const abortControllerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -66,6 +74,8 @@ export function TaskForm({ task, onSubmit, onClose }) {
         estimated_duration_minutes: task.estimated_duration_minutes || '',
         due_date: dueDate,
         is_completed: task.is_completed || false,
+        study_location: task.study_location || null,
+        study_location_detail: task.study_location_detail || null,
       });
     }
   }, [task]);
@@ -267,6 +277,12 @@ export function TaskForm({ task, onSubmit, onClose }) {
         payload.due_date = formData.due_date;
       }
 
+      if (formData.study_location) {
+        payload.study_location = formData.study_location;
+      } else {
+        payload.study_location = null;
+      }
+
       // Only include is_completed if editing an existing task
       if (task) {
         payload.is_completed = formData.is_completed;
@@ -282,6 +298,58 @@ export function TaskForm({ task, onSubmit, onClose }) {
 
   return (
     <>
+      {isSelectingFromMap && (
+        <div className="fixed inset-0 z-[60] bg-background">
+          <StudyPlaceFinder 
+            selectionMode={true} 
+            onSelectLocation={(loc) => {
+              setFormData(p => ({ ...p, study_location: loc.id, study_location_detail: loc }));
+              setIsSelectingFromMap(false);
+            }} 
+          />
+          <button 
+            type="button"
+            onClick={() => setIsSelectingFromMap(false)}
+            className="absolute top-4 right-4 z-50 bg-background/80 backdrop-blur border p-2 rounded-full shadow-md hover:bg-muted"
+          >
+            ✕ Cancel
+          </button>
+        </div>
+      )}
+
+      {isSelectingFavorites && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-card w-full max-w-md rounded-2xl shadow-xl border overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-4 border-b flex justify-between items-center bg-muted/30">
+              <h3 className="font-bold text-lg">Favorite Places</h3>
+              <button type="button" onClick={() => setIsSelectingFavorites(false)} className="text-muted-foreground hover:text-foreground">✕</button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+              {favoriteLocations.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No favorite places found.</p>
+              ) : (
+                favoriteLocations.map(loc => (
+                  <button
+                    key={loc.id}
+                    type="button"
+                    onClick={() => {
+                      setFormData(p => ({ ...p, study_location: loc.id, study_location_detail: loc }));
+                      setIsSelectingFavorites(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{loc.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{loc.address}</div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/50 z-40"
@@ -490,6 +558,63 @@ export function TaskForm({ task, onSubmit, onClose }) {
               />
               {errors.due_date && (
                 <p className="text-red-500 text-sm mt-1">{errors.due_date}</p>
+              )}
+            </div>
+
+            {/* Study Location */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Study Location</label>
+              {formData.study_location ? (
+                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
+                  <span className="font-medium truncate pr-4">
+                    {formData.study_location_detail?.name || 'Selected Location'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(p => ({...p, study_location: null, study_location_detail: null}))}
+                    className="text-muted-foreground hover:text-destructive text-sm font-medium shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoadingFavorites(true);
+                      listFavoriteLocations().then(locs => {
+                        setFavoriteLocations(locs);
+                        setIsSelectingFavorites(true);
+                      }).catch(e => {
+                        console.error("Failed to load favorites", e);
+                      }).finally(() => setLoadingFavorites(false));
+                    }}
+                    disabled={loadingFavorites}
+                    className="flex-1 min-w-[140px] px-3 py-2 text-sm border rounded-lg hover:bg-secondary transition-all flex items-center justify-center gap-2"
+                  >
+                    {loadingFavorites ? (
+                      'Loading...'
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0 text-red-500" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                        <span>Favorites</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsSelectingFromMap(true)}
+                    className="flex-1 min-w-[140px] px-3 py-2 text-sm border rounded-lg hover:bg-secondary transition-all flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    <span>Find Place</span>
+                  </button>
+                </div>
               )}
             </div>
 

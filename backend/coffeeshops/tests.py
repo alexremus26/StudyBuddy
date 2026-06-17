@@ -19,7 +19,7 @@ class AIProfileServiceTests(TestCase):
 		)
 
 	@override_settings(OLLAMA_HOST="")
-	def test_build_ai_profile_uses_fallback_without_ollama(self):
+	def test_build_ai_profile_fails_without_ollama(self):
 		payload = {
 			"reviews": [
 				{"author": "Ana", "text": "Quiet and good for laptops."},
@@ -27,18 +27,10 @@ class AIProfileServiceTests(TestCase):
 			]
 		}
 
-		profile = build_ai_profile_from_reviews(self.location, payload)
+		with self.assertRaises(RuntimeError) as ctx:
+			build_ai_profile_from_reviews(self.location, payload)
 
-		self.assertEqual(
-			profile["AIdescription"],
-			"AI profile unavailable for Study Cafe.",
-		)
-		self.assertEqual(profile["laptop_friendly"], 0.0)
-		self.assertEqual(profile["study_friendly"], 0.0)
-		self.assertEqual(profile["noise_level"], 0.0)
-		self.assertEqual(profile["overall_corwdness"], 0.0)
-		self.assertEqual(profile["generation_source"], "fallback")
-		self.assertIn("OLLAMA_HOST", profile["generation_error"])
+		self.assertIn("OLLAMA_HOST is not configured", str(ctx.exception))
 
 
 class ProcessLocationProfileTaskTests(TestCase):
@@ -90,7 +82,6 @@ class ProcessLocationProfileTaskTests(TestCase):
 				"overall_corwdness": 2.0,
 				"noise_level": 2.5,
 				"generation_source": f"ollama-{settings.OLLAMA_MODEL}",
-				"generation_error": "",
 			}
 
 		with patch(
@@ -107,7 +98,6 @@ class ProcessLocationProfileTaskTests(TestCase):
 		self.assertEqual(len(captured_payload["reviews"]), 2)
 		self.assertEqual(generate_result["status"], "done")
 		self.assertEqual(generate_result["generation_source"], f"ollama-{settings.OLLAMA_MODEL}")
-		self.assertEqual(generate_result["generation_error"], "")
 
 		profile = AIAggregateProfile.objects.get(location=self.location)
 		self.assertEqual(profile.AIdescription, "Mock profile")
@@ -116,3 +106,15 @@ class ProcessLocationProfileTaskTests(TestCase):
 		self.assertEqual(profile.overall_corwdness, 2.0)
 		self.assertEqual(profile.noise_level, 2.5)
 		self.assertEqual(profile.overall_rating, 3.6)
+
+	def test_fetch_reviews_task_fails_with_no_reviews(self):
+		"""fetch_reviews_task should raise RuntimeError when no reviews are collected."""
+		with patch(
+			"coffeeshops.tasks._collect_reviews",
+			return_value=[],
+		):
+			with self.assertRaises(RuntimeError) as ctx:
+				fetch_reviews_task.run(self.location.id)
+
+		self.assertIn("No reviews available", str(ctx.exception))
+		self.assertFalse(AIAggregateProfile.objects.filter(location=self.location).exists())

@@ -82,16 +82,10 @@ def _collect_reviews(location: Location) -> list[dict]:
 def _save_ai_profile(location: Location, combined_reviews: list[dict]) -> dict:
     profile_payload = build_ai_profile_from_reviews(location, {"reviews": combined_reviews})
 
-    generation_error = str(profile_payload.get("generation_error", "")).strip()
-    if generation_error:
-        logger.warning(
-            "AI profile fallback used for location %s (%s): %s",
-            location.id,
-            location.name,
-            generation_error,
-        )
-    else:
-        logger.info("AI profile generated via %s for location %s", profile_payload.get("generation_source", "unknown"), location.id)
+    logger.info(
+        "AI profile generated via %s for location %s",
+        profile_payload.get("generation_source", "unknown"), location.id,
+    )
 
     with transaction.atomic():
         profile, _ = AIAggregateProfile.objects.update_or_create(
@@ -114,7 +108,6 @@ def _save_ai_profile(location: Location, combined_reviews: list[dict]) -> dict:
         "overall_rating": profile.overall_rating,
         "status": "done",
         "generation_source": profile_payload.get("generation_source", "unknown"),
-        "generation_error": generation_error,
     }
 
 
@@ -169,6 +162,16 @@ def fetch_reviews_task(self, location_id: int, job_id: int | None = None) -> dic
         if job and self.request.retries >= self.max_retries:
             job.mark_status(AIProfileGenerationJob.STATUS_FAILED, error=str(exc))
         raise
+
+    if not combined_reviews:
+        error_message = (
+            f"No reviews available for location {location.id} ({location.name}). "
+            f"Cannot generate AI profile without review data."
+        )
+        logger.warning(error_message)
+        if job:
+            job.mark_status(AIProfileGenerationJob.STATUS_FAILED, error=error_message)
+        raise RuntimeError(error_message)
 
     logger.info(
         "Fetched %d reviews for location %s (%s), enqueuing for AI scoring",
@@ -233,5 +236,4 @@ def score_location_task(self, location_id: int, combined_reviews: list[dict], jo
         "status": profile_payload["status"],
         "review_count": len(combined_reviews),
         "generation_source": profile_payload.get("generation_source", "unknown"),
-        "generation_error": profile_payload.get("generation_error", ""),
     }

@@ -36,16 +36,7 @@ def _extract_json_object(text: str) -> dict:
     return json.loads(clean_text)
 
 
-def _build_fallback_profile(location: Location, reviews: list[dict], error_message: str) -> dict:
-    return {
-        "AIdescription": f"AI profile unavailable for {location.name}.",
-        "laptop_friendly": 0.0,
-        "study_friendly": 0.0,
-        "overall_corwdness": 0.0,
-        "noise_level": 0.0,
-        "generation_source": "fallback",
-        "generation_error": error_message,
-    }
+
 
 
 def _call_ollama(prompt: str, location_id: int) -> str:
@@ -183,7 +174,7 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
         "    3.0-3.9 = moderate: average cafe noise, somewhat distracting\n"
         "    1.5-2.9 = poor: noticeably loud, music, hard to concentrate\n"
         "    0.0-1.4 = terrible: extremely noisy, impossible to concentrate\n\n"
-        "AIdescription — Summary of all reviews, focus on presenting the place for study enjoyers (BETWEEN 180 - 220 CHARACTERS).\n"
+        "AIdescription — Summary of all reviews in English (always write the description in English, even if the input reviews are in Romanian or another language), focus on presenting the place for study enjoyers (BETWEEN 180 - 220 CHARACTERS).\n"
         "It is CRITICAL that you do not exceed this limit, or the text will be cut off.\n\n"
         "Be consistent, conservative, and deterministic.\n"
         "If reviews are insufficient for a dimension, default to 2.5.\n"
@@ -198,7 +189,7 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
     if not ollama_host:
         error_message = "OLLAMA_HOST is not configured"
         logger.error("Ollama unavailable for location %s: %s", location.id, error_message)
-        return _build_fallback_profile(location, reviews, error_message)
+        raise RuntimeError(error_message)
 
     try:
         response_text = _call_ollama(prompt, location.id)
@@ -208,12 +199,12 @@ def build_ai_profile_from_reviews(location: Location, reviews_payload: dict) -> 
             "Ollama profile generation FAILED for location %s (%s) after all retries: %s: %s",
             location.id, location.name, type(exc).__name__, exc,
         )
-        return _build_fallback_profile(location, reviews, str(exc))
+        raise RuntimeError(f"Ollama profile generation failed: {exc}") from exc
 
     if not isinstance(data, dict):
         error_message = "Ollama response was not a JSON object"
         logger.error("AI profile generation failed for location %s: %s", location.id, error_message)
-        return _build_fallback_profile(location, reviews, error_message)
+        raise RuntimeError(error_message)
 
     logger.info(
         "Successfully generated AI profile for location %s (%s): scores=%s",

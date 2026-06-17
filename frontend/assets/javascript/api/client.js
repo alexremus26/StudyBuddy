@@ -330,6 +330,19 @@ export async function deleteFavorite(locationId) {
   return deleteJson(`/api/coffeeshops/locations/${locationId}/favorite/`);
 }
 
+export async function listFavoriteLocations() {
+  const locations = await listCafeLocations();
+  return locations.filter((loc) => loc.is_favorited);
+}
+
+export async function recommendByAssignment(assignmentId) {
+  return postJson('/api/coffeeshops/recommend/by-assignment/', { assignment_id: assignmentId });
+}
+
+export async function recommendByMood(mood) {
+  return postJson('/api/coffeeshops/recommend/by-mood/', { mood });
+}
+
 export async function createTaskBlock(payload) {
   return postJson('/api/schedule/task-blocks/', payload);
 }

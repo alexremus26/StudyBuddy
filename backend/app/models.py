@@ -50,6 +50,13 @@ class Assignment(models.Model):
     priority = models.IntegerField(choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(blank=True, null=True)
+    study_location = models.ForeignKey(
+        'coffeeshops.Location',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assignments',
+    )
 
     class Meta:
         db_table = 'app_task'

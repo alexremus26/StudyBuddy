@@ -5,7 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { IntroSection } from './components/AuthSection';
 import { Schedule } from './components/Schedule';
 import { Planner } from './components/Planner';
-import { PlacesMap } from './components/PlacesMap';
+import { StudyPlaceFinder } from './components/StudyPlaceFinder';
 import { LandingPage } from './components/LandingPage';
 import { Achievements } from './components/Achievements';
 import {
@@ -57,9 +57,9 @@ function HomeTab({ profile, onGoSchedule, onGoCafes, onLogout }) {
           </button>
         </div>
         <div className="rounded-lg border bg-background p-6">
-          <h3 className="font-semibold text-lg mb-2">Find My Café</h3>
+          <h3 className="font-semibold text-lg mb-2">Find My Study Place</h3>
           <p className="text-muted-foreground text-sm mb-4">
-            Browse study-friendly cafés on an interactive map and inspect their rating summaries.
+            Browse study-friendly places, use AI to find the perfect spot, and inspect their ratings.
           </p>
           <button
             onClick={onGoCafes}
@@ -281,7 +281,7 @@ function AppShell() {
             )}
           />
           <Route path="/schedule" element={<Schedule onProfileUpdate={refreshProfile} />} />
-          <Route path="/cafes" element={<PlacesMap />} />
+          <Route path="/cafes" element={<StudyPlaceFinder />} />
           <Route path="/focus" element={<FocusTab />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="/achievements" element={<Achievements />} />

@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 
+from app.models import Assignment
 from .models import AIAggregateProfile, AIProfileGenerationJob, Location, UserReview, UserFavPlace
 from .serializers import (
     AIAggregateProfileSummarySerializer,
@@ -15,6 +16,7 @@ from .serializers import (
     UserReviewSerializer,
     UserFavPlaceSerializer,
 )
+from .services import ai_study_recommender
 
 
 class LocationReviewPagination(PageNumberPagination):
@@ -203,3 +205,60 @@ def location_favorite(request, location_id: int):
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
     fav.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _get_locations_for_recommendation(request):
+    """Helper to fetch all locations with their profiles for AI prompt."""
+    locations = (
+        Location.objects.filter(coordinates__isnull=False)
+        .order_by("name")
+        .prefetch_related(
+            Prefetch(
+                "aggregate_profiles",
+                queryset=AIAggregateProfile.objects.order_by("-created_at"),
+            )
+        )
+    )
+    # Serialize using LocationMapSerializer to get the aggregate profile data easily
+    return LocationMapSerializer(locations, many=True, context={"request": request}).data
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def ai_recommend_by_assignment(request):
+    assignment_id = request.data.get("assignment_id")
+    if not assignment_id:
+        return Response({"detail": "assignment_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    assignment = get_object_or_404(Assignment, id=assignment_id, user=request.user)
+    
+    assignment_data = {
+        "title": assignment.title,
+        "category": assignment.get_category_display(),
+        "estimated_duration_minutes": assignment.estimated_duration_minutes,
+        "description": assignment.description,
+    }
+
+    locations_data = _get_locations_for_recommendation(request)
+
+    try:
+        recommendation = ai_study_recommender.recommend_by_assignment(assignment_data, locations_data)
+        return Response(recommendation, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": f"AI Recommendation failed: {str(e)}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def ai_recommend_by_mood(request):
+    mood = request.data.get("mood")
+    if not mood:
+        return Response({"detail": "mood text is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    locations_data = _get_locations_for_recommendation(request)
+
+    try:
+        recommendation = ai_study_recommender.recommend_by_mood(mood, locations_data)
+        return Response(recommendation, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": f"AI Recommendation failed: {str(e)}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

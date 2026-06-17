@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {
@@ -690,7 +691,7 @@ function fitMapToLocations(map, locationsToFit, { padding = 60, maxZoom = 17, si
   }
 }
 
-export function PlacesMap() {
+export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map());
@@ -702,6 +703,20 @@ export function PlacesMap() {
 
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const routerLocation = useLocation();
+
+  useEffect(() => {
+    if (locations.length > 0) {
+      const urlParams = new URLSearchParams(routerLocation.search);
+      const locationParam = urlParams.get('location');
+      if (locationParam) {
+        const id = parseInt(locationParam, 10);
+        if (locations.some(l => l.id === id)) {
+          setSelectedLocationId(id);
+        }
+      }
+    }
+  }, [routerLocation.search, locations]);
   const [userReview, setUserReview] = useState(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -1077,7 +1092,15 @@ export function PlacesMap() {
 
         setLocations(normalizedLocations);
         if (normalizedLocations.length > 0) {
-          setSelectedLocationId((currentId) => currentId || normalizedLocations[0].id);
+          const urlParams = new URLSearchParams(window.location.search);
+          const locationParam = urlParams.get('location');
+          const matchedLocation = locationParam ? normalizedLocations.find(l => l.id === parseInt(locationParam, 10)) : null;
+          
+          if (matchedLocation) {
+            setSelectedLocationId(matchedLocation.id);
+          } else {
+            setSelectedLocationId((currentId) => currentId || normalizedLocations[0].id);
+          }
         }
       } catch (fetchError) {
         if (!active) {
@@ -1307,7 +1330,7 @@ export function PlacesMap() {
   if (!mapboxToken) {
     return (
       <div className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h1 className="text-3xl font-bold">Find My Café</h1>
+        <h1 className="text-3xl font-bold">Find My Study Place</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Add a `VITE_MAPBOX_ACCESS_TOKEN` environment variable to enable the map.
         </p>
@@ -1318,9 +1341,9 @@ export function PlacesMap() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-3xl font-bold">Find My Café</h1>
+        <h1 className="text-3xl font-bold">Find My Study Place</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Explore cafés on the map. Click a marker to inspect its study summary.
+          Explore study-friendly places on the map. Click a marker to inspect its study summary.
         </p>
       </div>
 
@@ -1338,7 +1361,7 @@ export function PlacesMap() {
               <p className="text-xs text-muted-foreground">
                 {isSearchActive
                   ? `${filteredLocations.length} result${filteredLocations.length !== 1 ? 's' : ''} found`
-                  : 'Markers show the café name. Select one to see its ratings.'}
+                  : 'Markers show the place name. Select one to see its ratings.'}
               </p>
             </div>
 
@@ -1360,7 +1383,7 @@ export function PlacesMap() {
               <input
                 id="cafe-search"
                 type="text"
-                placeholder="Search cafés..."
+                placeholder="Search study places..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full rounded-xl border bg-background py-2 pl-9 pr-9 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 transition-shadow"
@@ -1384,14 +1407,14 @@ export function PlacesMap() {
           <div className="relative min-h-[68vh] bg-card dark:bg-neutral-900">
             {isLoading ? (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/75 text-sm text-muted-foreground backdrop-blur-sm">
-                Loading cafés...
+                Loading study places...
               </div>
             ) : null}
             <div ref={mapContainerRef} className="h-[68vh] w-full" />
           </div>
         </section>
 
-        <aside className="rounded-3xl border bg-card p-6 shadow-sm flex flex-col relative overflow-hidden">
+        <aside className="rounded-3xl border bg-card p-6 shadow-sm flex flex-col relative overflow-hidden h-[500px] lg:h-[calc(68vh+60px)] max-h-[500px] lg:max-h-[calc(68vh+60px)] min-h-0">
           <style>{`
             @keyframes slideUpFade {
               0% { opacity: 0; transform: translateY(15px); }
@@ -1412,8 +1435,8 @@ export function PlacesMap() {
 
           <div className="mb-5 space-y-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Find My Café</p>
-              <p className="text-lg font-semibold text-foreground">Your café dashboard</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Find My Study Place</p>
+              <p className="text-lg font-semibold text-foreground">Your study dashboard</p>
             </div>
             <div className="inline-flex w-full rounded-full border bg-muted/40 p-1 text-xs font-semibold text-muted-foreground">
               <button
@@ -1436,7 +1459,7 @@ export function PlacesMap() {
           </div>
 
           {panelView === 'favorites' ? (
-            <div className="flex-1 space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1 custom-scrollbar">
               {favoriteLocations.length ? (
                 <div className="space-y-3">
                   {favoriteLocations.map((location) => {
@@ -1497,7 +1520,7 @@ export function PlacesMap() {
               )}
             </div>
           ) : selectedLocation ? (
-            <div key={selectedLocation.id} className="flex-1 space-y-6">
+            <div key={selectedLocation.id} className="flex-1 space-y-6 overflow-y-auto pr-1 custom-scrollbar">
               {/* Header Info */}
               <div className="animate-slide-up opacity-0" style={{ animationDelay: '0ms' }}>
                 {/* Café name */}
@@ -1569,6 +1592,18 @@ export function PlacesMap() {
                     </span>
                   </button>
                 </div>
+                
+                {selectionMode && onSelectLocation && (
+                  <div className="mt-4 pt-4 border-t animate-slide-up">
+                    <button
+                      type="button"
+                      onClick={() => onSelectLocation(selectedLocation)}
+                      className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white shadow-md hover:bg-blue-700 active:scale-[0.98] transition-all"
+                    >
+                      Select this location
+                    </button>
+                  </div>
+                )}
               </div>
 
               {userReview && showUserReviewDetails ? (

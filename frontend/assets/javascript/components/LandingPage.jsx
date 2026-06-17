@@ -141,15 +141,8 @@ export function LandingPage({ onAuthSubmit }) {
                   </div>
                 </div>
 
-                {mode === 'login' && (
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" type="checkbox"/>
-                      <span className="text-slate-500">Remember me</span>
-                    </label>
-                    <a className="text-indigo-600 hover:underline" href="#">Forgot Password?</a>
-                  </div>
-                )}
+
+
 
                 <button 
                   type="submit"

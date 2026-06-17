@@ -48,4 +48,5 @@ urlpatterns = [
 	path("planner/drafts/", views.planner_draft_list, name="planner-drafts"),
 	path("planner/approve/<int:pk>/", views.planner_approve, name="planner-approve"),
 	path("planner/delete/<int:pk>/", views.planner_delete, name="planner-delete"),
+	path("parse-assignment/", views.parse_assignment_text, name="parse-assignment-text"),
 ]

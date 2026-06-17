@@ -1054,22 +1054,16 @@ export function Schedule({ onProfileUpdate = () => {} }) {
         <div>
           <h1 className="text-3xl font-bold">Schedule</h1>
           <p className="text-muted-foreground mt-1">
-            Manage assignments, classes, and manual tasks as a demo.
+            Manage assignments, classes, and manual tasks.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="/planner"
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            Go to AI Planner
-          </a>
           <button
             onClick={() => handleAddScheduleClick()}
             disabled={isOcrImporting}
-            className="px-4 py-2 border border-input rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isOcrImporting ? 'Importing Schedule...' : 'Add Schedule (OCR)'}
+            {isOcrImporting ? 'Importing Schedule...' : 'Add Schedule'}
           </button>
           <button
             onClick={() => handleOpenForm()}
@@ -1094,31 +1088,7 @@ export function Schedule({ onProfileUpdate = () => {} }) {
         </div>
       ) : null}
 
-      {lastImportMeta ? (
-        <div className="rounded-lg border border-input bg-card/40 px-4 py-3 text-sm">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${getParserBadge(lastImportMeta.source).className}`}>
-              {getParserBadge(lastImportMeta.source).label}
-            </span>
-            <span className="text-muted-foreground">
-              Imported {lastImportMeta.importedCount} class{lastImportMeta.importedCount === 1 ? '' : 'es'}
-            </span>
-            {typeof lastImportMeta.confidence === 'number' ? (
-              <span className="text-muted-foreground text-xs">
-                Confidence: {lastImportMeta.confidence.toFixed(2)}
-                {typeof lastImportMeta.confidenceThreshold === 'number'
-                  ? ` (threshold ${lastImportMeta.confidenceThreshold.toFixed(2)})`
-                  : ''}
-              </span>
-            ) : null}
-          </div>
-          {Array.isArray(lastImportMeta.warnings) && lastImportMeta.warnings.length > 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {lastImportMeta.warnings.join(' ')}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+
 
       {showTaskForm ? (
         <TaskForm

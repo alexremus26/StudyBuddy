@@ -416,3 +416,30 @@ def planner_delete(request, pk):
         
     plan.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    methods=["POST"],
+    operation_id="parse_assignment_text",
+    responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT},
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def parse_assignment_text(request):
+    ocr_text = request.data.get("ocr_text", "").strip()
+    if not ocr_text:
+        return Response(
+            {"error": "ocr_text is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Enforce a reasonable length limit on input
+    max_length = 10000
+    if len(ocr_text) > max_length:
+        ocr_text = ocr_text[:max_length]
+
+    from schedule.services.assignment_parser import parse_assignment_text as do_parse
+
+    result = do_parse(ocr_text)
+    return Response(result, status=status.HTTP_200_OK)
+

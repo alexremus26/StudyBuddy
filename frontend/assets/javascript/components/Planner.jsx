@@ -106,9 +106,6 @@ export function Planner() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">AI Study Planner</h1>
-          <p className="text-muted-foreground mt-1">
-            Generate a ~30 day study plan with study/rest alternation.
-          </p>
         </div>
       </div>
       
@@ -147,11 +144,7 @@ export function Planner() {
             {isGenerating ? 'Generating...' : 'Generate AI Plan'}
           </button>
         </div>
-        {drafts.length > 0 && (
-          <p className="text-sm text-amber-600 mt-3 font-medium">
-            You already have an active plan. Please review or delete it before generating a new one.
-          </p>
-        )}
+
       </div>
 
       <div className="space-y-6">
@@ -163,7 +156,6 @@ export function Planner() {
             <div key={plan.id} className="bg-card border rounded-xl p-6 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <h3 className="font-semibold text-lg">Plan: {plan.start_date} to {plan.end_date}</h3>
                   <span className={`text-xs px-2 py-1 rounded-full ${plan.status === 'approved' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                     {plan.status.toUpperCase()}
                   </span>

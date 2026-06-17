@@ -203,6 +203,10 @@ export async function parseScheduleText(payload) {
   return postJson('/api/schedule/parse-text/', payload);
 }
 
+export async function parseAssignmentText(payload) {
+  return postJson('/api/schedule/parse-assignment/', payload);
+}
+
 export async function getAssignment(assignmentId) {
   const { data, error, response } = await apiClient.GET('/api/schedule/assignments/{id}/', {
     params: { path: { id: assignmentId } },

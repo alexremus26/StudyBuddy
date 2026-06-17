@@ -35,6 +35,15 @@ function getMarkerColor(rating) {
   return '#3b82f6';
 }
 
+function hasAIReview(location) {
+  return location?.aggregate_profile != null;
+}
+
+/** A location should appear on the map if it has an AI review OR is favorited. */
+function shouldShowOnMap(location) {
+  return hasAIReview(location) || Boolean(location?.is_favorited);
+}
+
 const REVIEW_FIELDS = [
   {
     key: 'laptop_friendly',
@@ -435,6 +444,18 @@ if (!document.getElementById(MARKER_STYLE_ID)) {
       opacity: 1 !important;
       pointer-events: auto !important;
     }
+    .cafe-marker[data-visibility="hidden"] {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      transform: scale(0.5);
+    }
+    @keyframes pendingPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .pending-pulse-dot {
+      animation: pendingPulse 2s ease-in-out infinite;
+    }
   `;
   document.head.appendChild(styleSheet);
 }
@@ -474,9 +495,9 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
       overflow: 'hidden',
     });
 
-    const svg = dropShape.querySelector('svg');
-    if (svg) {
-      Object.assign(svg.style, {
+    const icon = dropShape.querySelector('.marker-icon');
+    if (icon) {
+      Object.assign(icon.style, {
         width: '0px',
         height: '0px',
         opacity: '0',
@@ -487,16 +508,23 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
 
     const content = dropShape.querySelector('.marker-content');
     if (content) {
-      content.style.opacity = '1';
-      content.style.maxHeight = '200px';
-      content.style.transition = `opacity 0.3s ${ease} 0.15s, max-height 0.3s ${ease}`;
+      Object.assign(content.style, {
+        position: 'static',
+        width: 'auto',
+        height: 'auto',
+        opacity: '1',
+        maxHeight: '200px',
+        pointerEvents: 'auto',
+        overflow: 'hidden',
+        transition: `opacity 0.3s ${ease} 0.15s, max-height 0.3s ${ease}`,
+      });
     }
   } else {
-    // Collapsed drop state — only shape/size, never opacity
+    // Collapsed circular badge state — only shape/size, never opacity
     Object.assign(outerElement.style, {
-      width: '20px',
-      height: '20px',
-      minHeight: '20px',
+      width: '22px',
+      height: '22px',
+      minHeight: '22px',
       cursor: 'pointer',
       outline: 'none',
       zIndex: '1',
@@ -506,11 +534,11 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
       width: '100%',
       height: '100%',
       minHeight: 'unset',
-      borderRadius: '50% 50% 50% 0',
-      transform: 'rotate(-45deg)',
+      borderRadius: '50%',
+      transform: 'rotate(0deg)',
       backgroundColor: color,
-      border: '2px solid rgba(255,255,255,0.85)',
-      boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+      border: '2px solid rgba(255,255,255,0.95)',
+      boxShadow: '0 3px 8px rgba(0,0,0,0.2)',
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
@@ -522,25 +550,30 @@ function applyMarkerStyle(outerElement, dropShape, location, isSelected) {
       overflow: 'hidden',
     });
 
-    const svg = dropShape.querySelector('svg');
-    if (svg) {
-      Object.assign(svg.style, {
-        width: '10px',
-        height: '10px',
+    const icon = dropShape.querySelector('.marker-icon');
+    if (icon) {
+      Object.assign(icon.style, {
+        width: '12px',
+        height: '12px',
+        flexShrink: '0',
         opacity: '1',
         position: 'static',
-        transform: 'rotate(45deg)',
-        marginTop: '-1px',
-        marginLeft: '1px',
+        transform: 'rotate(0deg)',
         transition: 'opacity 0.2s ease 0.2s, width 0.2s ease, height 0.2s ease',
       });
     }
 
     const content = dropShape.querySelector('.marker-content');
     if (content) {
-      content.style.opacity = '0';
-      content.style.maxHeight = '0';
-      content.style.transition = `opacity 0.1s ease, max-height 0.2s ${ease}`;
+      Object.assign(content.style, {
+        position: 'absolute',
+        width: '0px',
+        height: '0px',
+        opacity: '0',
+        overflow: 'hidden',
+        pointerEvents: 'none',
+        transition: `opacity 0.1s ease, max-height 0.2s ${ease}`,
+      });
     }
   }
 }
@@ -549,24 +582,29 @@ function buildMarkerElement(location, isSelected) {
   const outerElement = document.createElement('div');
   outerElement.className = 'cafe-marker';
   const dropShape = document.createElement('div');
+  dropShape.className = 'marker-shape';
 
-  // Coffee icon SVG
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2.5');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-
-  svg.innerHTML = `
-    <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
-    <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
-    <line x1="6" x2="6" y1="2" y2="4"></line>
-    <line x1="10" x2="10" y1="2" y2="4"></line>
-    <line x1="14" x2="14" y1="2" y2="4"></line>
-  `;
+  const svgWrapper = document.createElement('div');
+  if (location.is_favorited) {
+    // Star line icon for favorites
+    svgWrapper.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="marker-icon" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; flex-shrink: 0; opacity: 1; transition: opacity 0.2s ease 0.2s, width 0.2s ease, height 0.2s ease;">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+      </svg>
+    `;
+  } else {
+    // Coffee cup line icon for regular cafés
+    svgWrapper.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="marker-icon" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; flex-shrink: 0; opacity: 1; transition: opacity 0.2s ease 0.2s, width 0.2s ease, height 0.2s ease;">
+        <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
+        <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
+        <line x1="6" x2="6" y1="2" y2="4"></line>
+        <line x1="10" x2="10" y1="2" y2="4"></line>
+        <line x1="14" x2="14" y1="2" y2="4"></line>
+      </svg>
+    `;
+  }
+  const svg = svgWrapper.firstElementChild;
   dropShape.appendChild(svg);
 
   // Hidden info content (revealed on morph)
@@ -582,18 +620,25 @@ function buildMarkerElement(location, isSelected) {
     whiteSpace: 'normal',
   });
 
-  const overallRating = formatScore(location.aggregate_profile?.overall_rating);
+  const locationHasAIReview = hasAIReview(location);
+  const overallRating = locationHasAIReview ? formatScore(location.aggregate_profile?.overall_rating) : '';
   const summaryItems = getSelectedSummary(location) || [];
-  const subRatings = summaryItems
-    .filter((item) => item.label !== 'Overall')
-    .map((item) => `<span style="opacity:0.75;">${item.label}</span> <b>${item.value}</b>`)
-    .join(' &middot; ');
+  const subRatings = locationHasAIReview
+    ? summaryItems
+        .filter((item) => item.label !== 'Overall')
+        .map((item) => `<span style="opacity:0.75;">${item.label}</span> <b>${item.value}</b>`)
+        .join(' &middot; ')
+    : '';
+
+  const ratingBadge = locationHasAIReview
+    ? `<span style="flex-shrink:0;margin-left:8px;margin-right:8px;">${overallRating}</span>`
+    : `<span style="flex-shrink:0;margin-left:8px;font-size:10px;opacity:0.8;background:rgba(255,255,255,0.2);border-radius:6px;padding:1px 6px;">Pending</span>`;
 
   content.innerHTML =
     `<div style="font-weight:700;font-size:13px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;">` +
     `<div style="display:flex;align-items:center;overflow:hidden;">` +
     `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${location.name}</span>` +
-    `<span style="flex-shrink:0;margin-left:8px;margin-right:8px;">${overallRating}</span>` +
+    ratingBadge +
     `</div>` +
     `<button class="close-marker-btn" style="background:none;border:none;color:#fff;cursor:pointer;padding:2px 0 2px 4px;margin:0;display:flex;align-items:center;opacity:0.8;" aria-label="Close">` +
     `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>` +
@@ -792,6 +837,19 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
   const applyAIProfileGenerationPayload = (locationId, payload) => {
     if (payload?.job) {
       setAiGenerationJob(payload.job);
+      
+      // Register with global polling engine if the job is active
+      if (ACTIVE_AI_JOB_STATUSES.has(payload.job.status)) {
+        const targetLoc = locations.find((loc) => loc.id === locationId);
+        window.dispatchEvent(
+          new CustomEvent('studybuddy-start-polling', {
+            detail: {
+              locationId,
+              locationName: targetLoc?.name || 'requested café'
+            }
+          })
+        );
+      }
     }
 
     if (!payload?.profile) {
@@ -831,8 +889,40 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
     setUserReview(currentReview);
     setIsFavorited(Boolean(selectedLocation.is_favorited));
     setReviewDraft(currentReview ? reviewToDraft(currentReview) : createEmptyReviewDraft());
+
+    // Check if there's a running job for this location and start global polling if so
+    let active = true;
+    async function checkJobStatus() {
+      try {
+        const payload = await getLocationAIProfileGeneration(selectedLocation.id);
+        if (!active) return;
+        if (payload?.job) {
+          setAiGenerationJob(payload.job);
+          if (ACTIVE_AI_JOB_STATUSES.has(payload.job.status)) {
+            window.dispatchEvent(
+              new CustomEvent('studybuddy-start-polling', {
+                detail: {
+                  locationId: selectedLocation.id,
+                  locationName: selectedLocation.name
+                }
+              })
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check initial job status', err);
+      }
+    }
+
     setAiGenerationJob(null);
     setAiGenerationError(null);
+    if (!selectedLocation.aggregate_profile) {
+      void checkJobStatus();
+    }
+
+    return () => {
+      active = false;
+    };
   }, [selectedLocationId, selectedLocation]);
 
   const handleGenerateAIProfile = async () => {
@@ -841,7 +931,7 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
     }
 
     if (!getAuthToken()) {
-      setAiGenerationError('Sign in to generate an AI review.');
+      setAiGenerationError('Sign in to request an AI review.');
       return;
     }
 
@@ -859,40 +949,35 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
     }
   };
 
+  // Listen to background job progress and completion events from global polling engine
   useEffect(() => {
-    if (!selectedLocationId || selectedLocation?.aggregate_profile) {
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    async function pollGenerationStatus() {
-      try {
-        const payload = await getLocationAIProfileGeneration(selectedLocationId);
-        if (cancelled) {
-          return;
-        }
-        applyAIProfileGenerationPayload(selectedLocationId, payload);
-      } catch (err) {
-        if (!cancelled) {
-          console.error('Failed to load AI generation status', err);
-        }
+    const handleJobProgress = (e) => {
+      const { locationId, job } = e.detail;
+      if (locationId === selectedLocationId) {
+        setAiGenerationJob(job);
       }
-    }
+    };
 
-    void pollGenerationStatus();
-    const timer = window.setInterval(() => {
-      const status = aiGenerationJob?.status;
-      if (!status || ACTIVE_AI_JOB_STATUSES.has(status)) {
-        void pollGenerationStatus();
+    const handleJobCompleted = (e) => {
+      const { locationId, profile, job } = e.detail;
+      setLocations((prev) =>
+        prev.map((loc) =>
+          loc.id === locationId ? { ...loc, aggregate_profile: profile } : loc
+        )
+      );
+      if (locationId === selectedLocationId) {
+        setAiGenerationJob(job);
       }
-    }, 4000);
+    };
+
+    window.addEventListener('studybuddy-job-progress', handleJobProgress);
+    window.addEventListener('studybuddy-job-completed', handleJobCompleted);
 
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      window.removeEventListener('studybuddy-job-progress', handleJobProgress);
+      window.removeEventListener('studybuddy-job-completed', handleJobCompleted);
     };
-  }, [selectedLocationId, selectedLocation?.aggregate_profile, aiGenerationJob?.status]);
+  }, [selectedLocationId]);
 
   useEffect(() => {
     if (selectedLocationId) {
@@ -1099,7 +1184,7 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
           if (matchedLocation) {
             setSelectedLocationId(matchedLocation.id);
           } else {
-            setSelectedLocationId((currentId) => currentId || normalizedLocations[0].id);
+            setSelectedLocationId((currentId) => currentId || normalizedLocations.find(shouldShowOnMap)?.id || normalizedLocations[0].id);
           }
         }
       } catch (fetchError) {
@@ -1121,6 +1206,13 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
       active = false;
     };
   }, []);
+
+  // Auto-deselect unreviewed/non-favorited places when search is cleared
+  useEffect(() => {
+    if (!isSearchActive && selectedLocation && !shouldShowOnMap(selectedLocation)) {
+      setSelectedLocationId(null);
+    }
+  }, [isSearchActive, selectedLocation]);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainerRef.current || mapRef.current) {
@@ -1179,7 +1271,8 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
     markerRefs.current.forEach(({ marker }) => marker.remove());
     markerRefs.current.clear();
 
-    const center = getLocationsCenter(locations);
+    const visibleLocations = locations.filter(shouldShowOnMap);
+    const center = getLocationsCenter(visibleLocations.length ? visibleLocations : locations);
 
     locations.forEach((location) => {
       const coordinates = location.coordinates;
@@ -1194,6 +1287,12 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
       }
 
       const element = buildMarkerElement(location, location.id === selectedLocationId);
+
+      // Hide unreviewed, non-favorited markers immediately at creation
+      if (!shouldShowOnMap(location)) {
+        element.dataset.visibility = 'hidden';
+      }
+
       element.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1234,7 +1333,8 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
     const map = mapRef.current;
     markerRefs.current.forEach(({ marker, element, location }, locationId) => {
       const isSelected = locationId === selectedLocationId;
-      applyMarkerStyle(element, element.firstChild, location, isSelected);
+      const shapeEl = element.querySelector('.marker-shape') || element.firstChild;
+      applyMarkerStyle(element, shapeEl, location, isSelected);
 
       if (isSelected && map && !isSearchActive) {
         map.flyTo({
@@ -1263,6 +1363,13 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
       if (isSearchActive) {
         const isMatch = filteredLocationIds.has(locationId);
 
+        // All matched markers are shown, even if they aren't AI-reviewed/favorited
+        if (isMatch) {
+          delete element.dataset.visibility;
+        } else {
+          element.dataset.visibility = 'hidden';
+        }
+
         // Set data attribute — CSS handles opacity + pointer-events
         element.dataset.focus = isMatch ? 'match' : 'dimmed';
 
@@ -1271,6 +1378,12 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
           element.style.width = '28px';
           element.style.height = '28px';
           element.style.minHeight = '28px';
+
+          const icon = element.querySelector('.marker-icon');
+          if (icon) {
+            icon.style.width = '15px';
+            icon.style.height = '15px';
+          }
 
           // Add floating name label
           if (map && filteredLocationIds.size <= 5) {
@@ -1303,9 +1416,22 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
 
         // Restore default collapsed size if not selected
         if (!isSelected) {
-          element.style.width = '20px';
-          element.style.height = '20px';
-          element.style.minHeight = '20px';
+          element.style.width = '22px';
+          element.style.height = '22px';
+          element.style.minHeight = '22px';
+
+          const icon = element.querySelector('.marker-icon');
+          if (icon) {
+            icon.style.width = '12px';
+            icon.style.height = '12px';
+          }
+        }
+
+        // Hide unreviewed, non-favorited markers when search is inactive
+        if (!shouldShowOnMap(location)) {
+          element.dataset.visibility = 'hidden';
+        } else {
+          delete element.dataset.visibility;
         }
       }
     });
@@ -1490,7 +1616,14 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
                         <div className="mt-3 space-y-2">
                           <div className="flex items-center justify-between rounded-xl border bg-card px-3 py-2">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Community rating</p>
-                            <StarDisplay value={location.aggregate_profile?.overall_rating} size={14} />
+                            {hasAIReview(location) ? (
+                              <StarDisplay value={location.aggregate_profile?.overall_rating} size={14} />
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <span className="inline-block h-2 w-2 rounded-full bg-amber-400 pending-pulse-dot" />
+                                <span>Pending</span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="rounded-xl border bg-card px-3 py-2">
@@ -1504,11 +1637,18 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
                           </div>
                         </div>
 
-                        {aiSummary ? (
-                          <p className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-xs text-foreground/80 leading-snug">
-                            {aiSummary.length > 180 ? `${aiSummary.slice(0, 180)}...` : aiSummary}
-                          </p>
-                        ) : null}
+                        {hasAIReview(location) ? (
+                          aiSummary ? (
+                            <p className="mt-3 rounded-xl border bg-muted/20 px-3 py-2 text-xs text-foreground/80 leading-snug">
+                              {aiSummary.length > 180 ? `${aiSummary.slice(0, 180)}...` : aiSummary}
+                            </p>
+                          ) : null
+                        ) : (
+                          <div className="mt-3 flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                            <span className="inline-block h-2 w-2 rounded-full bg-amber-400 pending-pulse-dot" />
+                            <span>AI review not yet generated — open on map to request one.</span>
+                          </div>
+                        )}
                       </article>
                     );
                   })}
@@ -1530,7 +1670,14 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
 
                 {/* Rating row — compact, right below the name */}
                 <div className="mt-2">
-                  <StarDisplay value={selectedLocation.aggregate_profile?.overall_rating} size={16} />
+                  {hasAIReview(selectedLocation) ? (
+                    <StarDisplay value={selectedLocation.aggregate_profile?.overall_rating} size={16} />
+                  ) : (
+                    <div className="inline-flex items-center gap-2 rounded-full border bg-muted/20 px-3 py-1 text-xs font-semibold text-muted-foreground">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 pending-pulse-dot" />
+                      <span>Pending AI review</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Address */}
@@ -1615,29 +1762,39 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
               {/* Sub-ratings */}
               <div className="animate-slide-up opacity-0" style={{ animationDelay: '100ms' }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Vibe & Environment</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {getSelectedSummary(selectedLocation)?.filter(item => item.label !== 'Overall').map((item) => {
-                    const score = Number(item.value);
-                    const percentage = isNaN(score) ? 0 : (score / 5) * 100;
-                    return (
-                      <div key={item.label} className="rounded-2xl border bg-muted/20 p-3 shadow-sm transition-colors hover:bg-muted/40">
-                        <div className="flex justify-between items-end mb-2.5">
-                          <span className="text-xs font-semibold text-muted-foreground">{item.label}</span>
-                          <span className="text-sm font-black">{item.value}</span>
+                {hasAIReview(selectedLocation) ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {getSelectedSummary(selectedLocation)?.filter(item => item.label !== 'Overall').map((item) => {
+                      const score = Number(item.value);
+                      const percentage = isNaN(score) ? 0 : (score / 5) * 100;
+                      return (
+                        <div key={item.label} className="rounded-2xl border bg-muted/20 p-3 shadow-sm transition-colors hover:bg-muted/40">
+                          <div className="flex justify-between items-end mb-2.5">
+                            <span className="text-xs font-semibold text-muted-foreground">{item.label}</span>
+                            <span className="text-sm font-black">{item.value}</span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                            <div
+                              className="h-full rounded-full score-bar-fill"
+                              style={{
+                                width: `${percentage}%`,
+                                backgroundColor: getMarkerColor(score),
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
-                          <div
-                            className="h-full rounded-full score-bar-fill"
-                            style={{
-                              width: `${percentage}%`,
-                              backgroundColor: getMarkerColor(score),
-                            }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed bg-muted/10 p-4 text-center">
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <span className="inline-block h-2 w-2 rounded-full bg-amber-400 pending-pulse-dot" />
+                      Scores will appear after AI analysis
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground/70">Request an AI review below to unlock vibe scores.</p>
+                  </div>
+                )}
               </div>
 
               {/* AI Overview */}
@@ -1656,8 +1813,75 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
                   {!selectedLocation.aggregate_profile ? (
                     <div className="relative z-10 mt-4 space-y-3">
                       {aiGenerationJob && ACTIVE_AI_JOB_STATUSES.has(aiGenerationJob.status) ? (
-                        <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm font-semibold text-muted-foreground">
-                          {getAIJobLabel(aiGenerationJob.status)}
+                        <div className="rounded-2xl border border-indigo-500/20 bg-muted/10 p-5 space-y-4 shadow-inner">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 animate-pulse">
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black uppercase tracking-wider text-foreground leading-none">AI Analysis pipeline</h4>
+                              <p className="text-[10px] text-muted-foreground mt-1">Running background tasks...</p>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2.5 pt-1 border-t border-muted-foreground/10">
+                            {[
+                              { key: 'queued', label: '1. Queueing Job', desc: 'Submitting task to worker queue...' },
+                              { key: 'fetching_reviews', label: '2. Retrieving Reviews', desc: 'Crawling community comments and details...' },
+                              { key: 'scoring', label: '3. AI Evaluation', desc: 'Analyzing crowdness, noise, study rating...' }
+                            ].map((step, idx) => {
+                              const isQueued = aiGenerationJob.status === 'queued';
+                              const isFetching = aiGenerationJob.status === 'fetching_reviews';
+                              const isScoring = aiGenerationJob.status === 'scoring';
+                              
+                              let isComplete = false;
+                              let isActive = false;
+                              
+                              if (step.key === 'queued') {
+                                isComplete = isFetching || isScoring;
+                                isActive = isQueued;
+                              } else if (step.key === 'fetching_reviews') {
+                                isComplete = isScoring;
+                                isActive = isFetching;
+                              } else if (step.key === 'scoring') {
+                                isComplete = false;
+                                isActive = isScoring;
+                              }
+                              
+                              return (
+                                <div key={step.key} className="flex gap-3 text-xs leading-normal items-start">
+                                  <div className="mt-0.5 shrink-0 flex items-center justify-center">
+                                    {isComplete ? (
+                                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0d9488] text-white dark:bg-[#14b8a6] border border-[#0f766e]/10 shadow-sm animate-scale-up">
+                                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3.5">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      </div>
+                                    ) : isActive ? (
+                                      <div className="relative flex h-5 w-5 items-center justify-center rounded-full border-2 border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-500">
+                                        <span className="absolute inline-flex h-full w-full rounded-full bg-indigo-500/20 animate-ping" />
+                                        <span className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-500" />
+                                      </div>
+                                    ) : (
+                                      <div className="h-5 w-5 rounded-full border-2 border-border bg-background" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className={`font-semibold ${isActive ? 'text-indigo-600 dark:text-indigo-400' : isComplete ? 'text-foreground/80' : 'text-muted-foreground/40'}`}>
+                                      {step.label}
+                                    </p>
+                                    {isActive && (
+                                      <p className="text-[10px] text-muted-foreground mt-0.5 font-medium leading-tight">
+                                        {step.desc}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       ) : null}
 
@@ -1677,13 +1901,13 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
                         type="button"
                         onClick={handleGenerateAIProfile}
                         disabled={aiGenerationLoading || (aiGenerationJob && ACTIVE_AI_JOB_STATUSES.has(aiGenerationJob.status))}
-                        className="inline-flex items-center justify-center rounded-full border bg-background px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {aiGenerationLoading || (aiGenerationJob && ACTIVE_AI_JOB_STATUSES.has(aiGenerationJob.status))
                           ? getAIJobLabel(aiGenerationJob?.status)
                           : aiGenerationJob?.status === 'failed'
                             ? 'Try again'
-                            : 'Generate AI review'}
+                            : 'Request AI Review'}
                       </button>
                     </div>
                   ) : null}

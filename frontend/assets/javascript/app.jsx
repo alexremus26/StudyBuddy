@@ -16,6 +16,7 @@ import {
   setAuthToken,
   onInvalidAuthToken,
   updateMyProfile,
+  getLocationAIProfileGeneration,
 } from './api/client';
 import '../styles/style.css';
 
@@ -93,8 +94,151 @@ function FocusTab() {
 function AppShell() {
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAuthToken()));
   const [profile, setProfile] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [toasts, setToasts] = useState([]);
+  const [activeJobs, setActiveJobs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studybuddy-active-jobs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const location = useLocation();
   const navigate = useNavigate();
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studybuddy-active-jobs', JSON.stringify(activeJobs));
+    } catch {}
+  }, [activeJobs]);
+
+  useEffect(() => {
+    const handleNotification = (e) => {
+      const { text, type, title, timestamp, locationId } = e.detail;
+      const notificationId = Date.now() + Math.random().toString(36).substr(2, 9);
+      
+      const newNotification = {
+        id: notificationId,
+        text,
+        type: type || 'info',
+        title: title || 'System',
+        timestamp: timestamp || new Date(),
+        read: false,
+        locationId: locationId || null
+      };
+
+      setNotifications((prev) => [newNotification, ...prev]);
+      setToasts((prev) => [...prev, newNotification]);
+      
+      // Auto-remove toast after 5s
+      setTimeout(() => {
+        removeToast(notificationId);
+      }, 5000);
+    };
+
+    window.addEventListener('studybuddy-notification', handleNotification);
+    return () => window.removeEventListener('studybuddy-notification', handleNotification);
+  }, [removeToast]);
+
+  // Handle registration of new background jobs to poll
+  useEffect(() => {
+    const handleStartPolling = (e) => {
+      const { locationId, locationName } = e.detail;
+      setActiveJobs((prev) => {
+        if (prev.some((job) => job.locationId === locationId)) {
+          return prev;
+        }
+        return [...prev, { locationId, locationName }];
+      });
+    };
+
+    window.addEventListener('studybuddy-start-polling', handleStartPolling);
+    return () => window.removeEventListener('studybuddy-start-polling', handleStartPolling);
+  }, []);
+
+  // Global polling engine for active background jobs
+  useEffect(() => {
+    if (activeJobs.length === 0) return undefined;
+
+    let cancelled = false;
+
+    async function pollJobs() {
+      for (const job of activeJobs) {
+        try {
+          const payload = await getLocationAIProfileGeneration(job.locationId);
+          if (cancelled) return;
+
+          if (payload?.profile) {
+            // Completed! Notify globally and update UI components
+            window.dispatchEvent(
+              new CustomEvent('studybuddy-notification', {
+                detail: {
+                  title: 'AI Review Ready',
+                  text: `AI study analysis for "${job.locationName}" is complete.`,
+                  type: 'success',
+                  locationId: job.locationId,
+                },
+              })
+            );
+            window.dispatchEvent(
+              new CustomEvent('studybuddy-job-completed', {
+                detail: {
+                  locationId: job.locationId,
+                  profile: payload.profile,
+                  job: payload.job,
+                },
+              })
+            );
+            setActiveJobs((prev) => prev.filter((j) => j.locationId !== job.locationId));
+          } else if (payload?.job) {
+            if (payload.job.status === 'failed') {
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-notification', {
+                  detail: {
+                    title: 'AI Review Failed',
+                    text: `AI review generation for "${job.locationName}" failed.`,
+                    type: 'error',
+                  },
+                })
+              );
+              setActiveJobs((prev) => prev.filter((j) => j.locationId !== job.locationId));
+            } else {
+              // Dispatch progress update to PlacesMap if it's mounted
+              window.dispatchEvent(
+                new CustomEvent('studybuddy-job-progress', {
+                  detail: {
+                    locationId: job.locationId,
+                    job: payload.job,
+                  },
+                })
+              );
+            }
+          }
+        } catch (err) {
+          console.error(`Error polling job for location ${job.locationId}`, err);
+        }
+      }
+    }
+
+    void pollJobs();
+    const interval = setInterval(() => {
+      void pollJobs();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeJobs]);
 
   const logout = useCallback(() => {
     setIsLoggedIn(false);
@@ -257,7 +401,16 @@ function AppShell() {
   }
 
   return (
-    <div className="size-full flex min-h-screen bg-background text-foreground">
+    <div className="size-full flex min-h-screen bg-background text-foreground relative">
+      <style>{`
+        @keyframes toastSlideUp {
+          0% { opacity: 0; transform: translateY(20px) scale(0.95); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-toast-slide-in {
+          animation: toastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+      `}</style>
       <Sidebar
         isLoggedIn={isLoggedIn}
         profile={profile}
@@ -266,6 +419,8 @@ function AppShell() {
         onLoginClick={() => navigate('/login')}
         onRegisterClick={() => navigate('/register')}
         onAvatarUpload={handleAvatarUpload}
+        notifications={notifications}
+        onClearNotifications={clearNotifications}
       />
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <Routes>
@@ -288,6 +443,43 @@ function AppShell() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {/* Toast corner notifications overlay */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3 pointer-events-none max-w-sm w-full px-4 sm:px-0">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className="pointer-events-auto flex w-full items-start gap-3 rounded-2xl border bg-card/90 p-4 shadow-lg backdrop-blur-md animate-toast-slide-in border-l-4"
+            style={{
+              borderLeftColor: toast.type === 'success' ? '#0d9488' : '#6366f1',
+            }}
+          >
+            <div className="flex-1">
+              <p className="text-xs font-black uppercase tracking-wider text-foreground">{toast.title}</p>
+              <p className="mt-1 text-xs text-muted-foreground leading-normal">{toast.text}</p>
+              {toast.locationId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/cafes?location=${toast.locationId}`);
+                    removeToast(toast.id);
+                  }}
+                  className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  View on map &rarr;
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
+              aria-label="Close"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

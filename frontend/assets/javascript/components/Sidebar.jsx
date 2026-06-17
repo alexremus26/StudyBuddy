@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home', onTabChange = () => { }, onLoginClick = () => { }, onRegisterClick = () => { }, onAvatarUpload = async () => { } }) {
+export function Sidebar({ 
+  isLoggedIn = false, 
+  profile = null, 
+  currentTab = 'home', 
+  onTabChange = () => { }, 
+  onLoginClick = () => { }, 
+  onRegisterClick = () => { }, 
+  onAvatarUpload = async () => { },
+  notifications = [],
+  onClearNotifications = () => { }
+}) {
+  const navigate = useNavigate();
   const initial = profile?.username ? profile.username.charAt(0).toUpperCase() : '·';
   const fileInputRef = useRef(null);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -36,7 +48,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
   ];
 
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar p-6 md:flex md:flex-col sticky top-0">
+    <aside className="hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar p-6 md:flex md:flex-col sticky top-0 h-screen">
       <div className="space-y-2">
         <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">StudyBuddy</p>
         <h1 className="text-2xl font-semibold text-sidebar-foreground">Dashboard</h1>
@@ -47,7 +59,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors ${currentTab === tab.id
+            className={`w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${currentTab === tab.id
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-muted-foreground hover:bg-sidebar-accent'
               }`}
@@ -57,6 +69,54 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
         ))}
       </nav>
 
+      {/* Notifications Section */}
+      {isLoggedIn && (
+        <div className="flex-1 min-h-[160px] max-h-[350px] overflow-hidden flex flex-col mt-6 border-t border-sidebar-border pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Notifications</span>
+            {notifications.length > 0 && (
+              <button 
+                onClick={onClearNotifications} 
+                className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 font-bold transition-colors cursor-pointer"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs">
+            {notifications.length === 0 ? (
+              <div className="text-muted-foreground/60 py-8 text-center italic text-[11px]">No new notifications</div>
+            ) : (
+              notifications.map((n) => (
+                <div key={n.id} className="p-3 rounded-xl border border-sidebar-border bg-sidebar-accent/30 hover:bg-sidebar-accent/50 transition-colors relative group">
+                  <div className="flex justify-between items-start mb-1 gap-1">
+                    <span className={`font-bold text-[11px] uppercase tracking-wide ${n.type === 'success' ? 'text-[#0d9488] dark:text-[#2dd4bf]' : 'text-indigo-600 dark:text-indigo-400'}`}>{n.title}</span>
+                    <span className="text-[9px] text-muted-foreground shrink-0 font-medium">
+                      {new Date(n.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </span>
+                  </div>
+                  <p className="text-foreground/90 text-[11px] leading-relaxed font-medium">{n.text}</p>
+                  {n.locationId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/cafes?location=${n.locationId}`);
+                      }}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-400 dark:hover:bg-indigo-950 text-[10px] font-bold text-indigo-600 transition-all cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      <span>View on map</span>
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-auto pt-8 space-y-3">
         <button
           type="button"
@@ -65,7 +125,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
             const isDark = root.classList.toggle('dark');
             try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch {}
           }}
-          className="flex w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          className="flex w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground cursor-pointer"
           aria-label="Toggle theme"
         >
           {/* Sun icon */}
@@ -83,7 +143,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
           <button
             type="button"
             onClick={isLoggedIn ? handleAvatarClick : undefined}
-            className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-sidebar-border bg-sidebar text-lg font-semibold text-sidebar-foreground"
+            className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-sidebar-border bg-sidebar text-lg font-semibold text-sidebar-foreground cursor-pointer"
             aria-label={isLoggedIn ? 'Upload profile picture' : 'Profile picture'}
           >
             {avatarUrl && !avatarLoadFailed ? (
@@ -134,7 +194,7 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
                 <button
                   type="button"
                   onClick={handleAvatarClick}
-                  className="mt-1 text-xs font-medium text-muted-foreground hover:text-sidebar-foreground"
+                  className="mt-1 text-xs font-medium text-muted-foreground hover:text-sidebar-foreground cursor-pointer"
                 >
                   Change photo
                 </button>
@@ -150,14 +210,14 @@ export function Sidebar({ isLoggedIn = false, profile = null, currentTab = 'home
             <button
               type="button"
               onClick={onLoginClick}
-              className="flex-1 rounded-lg bg-sidebar-primary px-3 py-2 text-sm font-semibold text-sidebar-primary-foreground hover:opacity-90"
+              className="flex-1 rounded-lg bg-sidebar-primary px-3 py-2 text-sm font-semibold text-sidebar-primary-foreground hover:opacity-90 cursor-pointer"
             >
               Login
             </button>
             <button
               type="button"
               onClick={onRegisterClick}
-              className="flex-1 rounded-lg border border-sidebar-border px-3 py-2 text-sm font-semibold text-sidebar-foreground hover:bg-sidebar-accent"
+              className="flex-1 rounded-lg border border-sidebar-border px-3 py-2 text-sm font-semibold text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer"
             >
               Register
             </button>

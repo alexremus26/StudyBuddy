@@ -418,3 +418,42 @@ English
 		self.assertTrue(result["diagnostics"]["escalation_used"])
 		self.assertEqual(result["diagnostics"]["escalation_reason"], "table_heavy_layout")
 		mock_gemini.assert_called_once()
+
+	def test_parse_assignment_requires_authentication(self):
+		response = self.client.post(reverse("parse-assignment-text"), {"ocr_text": "hello"})
+		self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+	def test_parse_assignment_missing_text_fails(self):
+		self.client.force_authenticate(user=self.user_one)
+		response = self.client.post(reverse("parse-assignment-text"), {}, format="json")
+		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+		self.assertIn("error", response.data)
+
+	@override_settings(GEMINI_API_KEY="test-key")
+	@patch("google.generativeai.GenerativeModel.generate_content")
+	def test_parse_assignment_success(self, mock_generate):
+		self.client.force_authenticate(user=self.user_one)
+		mock_response = mock_generate.return_value
+		mock_response.text = '{"title": "Test Title", "description": "Test Desc", "due_date": "2026-06-20", "estimated_duration_minutes": 120, "category": "project"}'
+
+		payload = {"ocr_text": "Complete project by June 20"}
+		response = self.client.post(reverse("parse-assignment-text"), payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data["title"], "Test Title")
+		self.assertEqual(response.data["description"], "Test Desc")
+		self.assertEqual(response.data["due_date"], "2026-06-20")
+		self.assertEqual(response.data["estimated_duration_minutes"], 120)
+		self.assertEqual(response.data["category"], "project")
+
+	@override_settings(GEMINI_API_KEY="")
+	def test_parse_assignment_fallback(self):
+		self.client.force_authenticate(user=self.user_one)
+		payload = {"ocr_text": "Simple Homework Title\nAnd description lines"}
+		response = self.client.post(reverse("parse-assignment-text"), payload, format="json")
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data["title"], "Simple Homework Title")
+		self.assertIn("And description lines", response.data["description"])
+		self.assertEqual(response.data["category"], "other")
+

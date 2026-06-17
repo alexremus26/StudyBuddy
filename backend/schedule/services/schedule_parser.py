@@ -516,7 +516,7 @@ class ScheduleParser:
             client = genai.GenerativeModel(self.gemini_model)
             
             try:
-                response = client.generate_content(prompt)
+                response = client.generate_content(prompt, request_options={"timeout": 45.0})
             except Exception as exc:
                 failure_type = exc.__class__.__name__
                 warnings.append(f"Gemini Vision API failed: {failure_type}")

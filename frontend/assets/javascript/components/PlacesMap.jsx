@@ -746,7 +746,7 @@ function fitMapToLocations(map, locationsToFit, { padding = 60, maxZoom = 17, si
   }
 }
 
-export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
+export function PlacesMap({ selectionMode = false, onSelectLocation = null, isVisible = true }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map());
@@ -1442,21 +1442,41 @@ export function PlacesMap({ selectionMode = false, onSelectLocation = null }) {
   // EFFECT 1: Selection — apply marker shape (card vs pin) + fly-to
   useEffect(() => {
     const map = mapRef.current;
+    let selectedMarker = null;
+
     markerRefs.current.forEach(({ marker, element, location }, locationId) => {
       const isSelected = locationId === selectedLocationId;
+      
+      // Outside active search mode, make sure the selected location is visible on the map
+      if (!isSearchActive) {
+        if (isSelected) {
+          delete element.dataset.visibility;
+        } else if (!shouldShowOnMap(location)) {
+          element.dataset.visibility = 'hidden';
+        }
+      }
+
       const shapeEl = element.querySelector('.marker-shape') || element.firstChild;
       applyMarkerStyle(element, shapeEl, location, isSelected);
 
-      if (isSelected && map && !isSearchActive) {
+      if (isSelected) {
+        selectedMarker = marker;
+      }
+    });
+
+    if (selectedMarker && map && !isSearchActive && isVisible) {
+      // Delay slightly to allow the map container's transition and resize observer to complete
+      const timer = setTimeout(() => {
         map.flyTo({
-          center: marker.getLngLat(),
+          center: selectedMarker.getLngLat(),
           speed: 1.2,
           curve: 1.42,
           essential: true,
         });
-      }
-    });
-  }, [selectedLocationId, isSearchActive]);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedLocationId, isSearchActive, isVisible]);
 
   // EFFECT 2: Search focus — opacity via data attributes + CSS, pin scaling, labels
   // Completely independent from selection styling — uses data-focus attribute

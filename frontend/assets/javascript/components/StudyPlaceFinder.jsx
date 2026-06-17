@@ -78,7 +78,7 @@ export function StudyPlaceFinder({ selectionMode = false, onSelectLocation = nul
       <div className="flex-1 relative overflow-hidden">
         {/* We keep the map mounted but hidden with CSS to avoid Mapbox re-initialization */}
         <div className={`absolute inset-0 ${activeTab === 'map' ? 'z-10 opacity-100' : '-z-10 opacity-0 pointer-events-none'}`}>
-          <PlacesMap selectionMode={selectionMode} onSelectLocation={onSelectLocation} />
+          <PlacesMap selectionMode={selectionMode} onSelectLocation={onSelectLocation} isVisible={activeTab === 'map'} />
         </div>
         
         {activeTab === 'ai' && (

@@ -3,6 +3,63 @@
 StudyBuddy is a full-stack academic productivity platform that helps university students organize their coursework, automatically generate optimized study plans, and discover the best nearby study spots using AI-powered scoring and real-time occupancy data.
 
 ---
+## User Use Case Diagram
+
+The following diagram illustrates how the student interacts with the StudyBuddy system, along with the automated workflows handled by the AI agents and external APIs:
+
+```mermaid
+graph LR
+    %% Styles (with explicit high-contrast text color)
+    classDef actor fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,font-weight:bold,color:#0369a1;
+    classDef usecase fill:#f0fdf4,stroke:#16a34a,stroke-width:1.5px,color:#166534;
+    classDef system fill:#fafafa,stroke:#64748b,stroke-dasharray: 4 4;
+
+    %% Primary Actor
+    Student((Student / User)):::actor
+
+    %% System Boundary
+    subgraph Boundary [StudyBuddy System Boundary]
+        UC_Auth(1. Authenticate / Login):::usecase
+        UC_Profile(2. Manage Profile & Streak):::usecase
+        UC_Tasks(3. Manage Tasks & Assignments):::usecase
+        UC_Schedule(4. View Schedule & Calendar):::usecase
+        UC_Upload(5. Import Schedule from Image):::usecase
+        UC_Map(6. Explore Cafes on Map):::usecase
+        UC_Fav(7. Save Place to Favorites):::usecase
+        UC_Review(8. Submit Custom Cafe Reviews):::usecase
+        UC_AI_Rec(9. Get AI Study Spot Recommendations):::usecase
+        UC_AI_Profile(10. Generate AI Cafe Profile ratings):::usecase
+        UC_BestTime(11. Query live crowdness level):::usecase
+    end
+
+    %% Secondary Actors
+    Ollama(Local Ollama AI):::actor
+    Gemini(Gemini Vision API):::actor
+    BestTime(BestTime API):::actor
+    Apify(Apify Crawler):::actor
+
+    %% Student Connections
+    Student --> UC_Auth
+    Student --> UC_Profile
+    Student --> UC_Tasks
+    Student --> UC_Schedule
+    Student --> UC_Map
+    Student --> UC_Fav
+    Student --> UC_Review
+
+    %% Relationships
+    UC_Schedule -.->|"<<include>>"| UC_Upload
+    UC_Map -.->|"<<extend>>"| UC_AI_Rec
+    UC_Map -.->|"<<extend>>"| UC_AI_Profile
+    UC_Map -.->|"<<extend>>"| UC_BestTime
+
+    %% AI / API Connections
+    UC_Upload --> Gemini
+    UC_AI_Rec --> Ollama
+    UC_AI_Profile --> Ollama
+    UC_AI_Profile --> Apify
+    UC_BestTime --> BestTime
+```
 
 ## System Architecture
 
@@ -73,6 +130,27 @@ graph TD
 | Containerization | Docker Compose | Multi-service orchestration (8 containers) |
 
 ---
+
+## AI Agents & Services
+
+StudyBuddy incorporates specialized AI agents to automate data processing and provide intelligent study support:
+
+1. **AI Review & Profile Analyzer (Local LLM)**
+   - **Engine:** Local Ollama instance (defaulting to the `llama3.2` model).
+   - **Role:** Analyzes raw Google Reviews scraped for a café to evaluate study-friendly parameters. It outputs structured ratings (0.0 to 5.0) for *Laptop Friendliness*, *Study Friendliness*, and *Noise Level*, along with a short 180-220 character summary in English.
+   - **Queue:** Processed asynchronously via the `ai-worker` service (Celery `ai` queue).
+
+2. **AI Study Recommender Agent (Local LLM)**
+   - **Engine:** Local Ollama instance (`llama3.2`).
+   - **Role:** Generates study spot recommendations tailored to the user. It evaluates nearby cafes based on:
+     - Active assignments/tasks (title, description, category, and estimated duration).
+     - User mood or specific request notes (e.g., "near campus", "quiet with multiple outlets").
+   - It outputs the top 3 study spots ordered by relevance, with custom, user-friendly reasons.
+
+3. **Intelligent Schedule Parser (Hybrid OCR + Gemini Vision)**
+   - **Engine:** Local Hybrid OCR parser with automatic escalation to **Google Gemini Vision API** (defaulting to `gemini-2.5-flash`).
+   - **Role:** Processes uploaded image schedules. If the local parser registers low extraction confidence (threshold < 0.62) or detects a complex table-heavy layout, it escalates processing to Gemini Vision to accurately structure academic time blocks.
+
 
 ## Core Features — Technical Deep-Dive
 
@@ -212,29 +290,6 @@ flowchart LR
 | `besttime` | `celery-besttime-worker` | 1 | Rate-limited API | Fetches live occupancy forecasts from BestTime.app |
 
 **Why concurrency=1 on the AI queue?** Running local LLM inference (Ollama) is CPU/RAM-intensive. Concurrent inference would cause thread thrashing and OOM kills. Serializing to a single worker ensures stable execution.
-
-**AI Profile Pipeline flow:**
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant API as Django API
-    participant CQ as coffeeshops queue
-    participant AQ as apify queue
-    participant AIQ as ai queue
-    participant DB as PostgreSQL
-
-    User->>API: POST /generate-ai-profile/{id}
-    API->>CQ: process_location_profile_task
-    CQ->>AQ: fetch_reviews_task (rate_limit=5/m, max_retries=3)
-    AQ-->>AQ: Crawl Google reviews via Apify
-    AQ-->>AQ: Merge with in-app user reviews
-    AQ->>AIQ: score_location_task (reviews payload)
-    AIQ-->>AIQ: Send reviews to Ollama with structured JSON schema
-    AIQ-->>AIQ: Parse scores: laptop_friendly, study_friendly, noise_level
-    AIQ->>DB: Upsert AIAggregateProfile + compute overall_rating
-    AIQ-->>API: Return profile result
-```
 
 ### 5. Geospatial Engine
 
